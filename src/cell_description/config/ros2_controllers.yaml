@@ -1,0 +1,56 @@
+# This is the ros2_control controller configuration for the cell, loaded by the one
+# ros2_control_node that runs the MuJoCo hardware interface. joint_trajectory_controller moves
+# the arm and gripper_controller drives the 2F-85 through its one driver joint. Only one
+# controller_manager may run at a time: a stale robot_state_publisher's /robot_description gets
+# picked up by a new ros2_control_node.
+
+controller_manager:
+  ros__parameters:
+    update_rate: 250  # Hz
+
+joint_state_broadcaster:
+  ros__parameters:
+    type: joint_state_broadcaster/JointStateBroadcaster
+
+joint_trajectory_controller:
+  ros__parameters:
+    type: joint_trajectory_controller/JointTrajectoryController
+    joints:
+      - shoulder_pan_joint
+      - shoulder_lift_joint
+      - elbow_joint
+      - wrist_1_joint
+      - wrist_2_joint
+      - wrist_3_joint
+    command_interfaces:
+      - position
+    state_interfaces:
+      - position
+      - velocity
+    state_publish_rate: 100.0
+    action_monitor_rate: 20.0
+    allow_partial_joints_goal: false
+    constraints:
+      stopped_velocity_tolerance: 0.05
+      goal_time: 1.0
+      shoulder_pan_joint: {trajectory: 0.3, goal: 0.02}
+      shoulder_lift_joint: {trajectory: 0.3, goal: 0.02}
+      elbow_joint: {trajectory: 0.3, goal: 0.02}
+      wrist_1_joint: {trajectory: 0.3, goal: 0.02}
+      wrist_2_joint: {trajectory: 0.3, goal: 0.02}
+      wrist_3_joint: {trajectory: 0.3, goal: 0.02}
+
+# The 2F-85 is commanded on robotiq_85_left_knuckle_joint in radians, 0 open and 0.8 closed.
+# Closing on an object ends in a stall rather than at the goal, so the stall check decides when a
+# grasp is done.
+gripper_controller:
+  ros__parameters:
+    type: parallel_gripper_action_controller/GripperActionController
+    joint: robotiq_85_left_knuckle_joint
+    state_interfaces:
+      - position
+      - velocity
+    goal_tolerance: 0.02
+    allow_stalling: true
+    stall_timeout: 0.5
+    stall_velocity_threshold: 0.002

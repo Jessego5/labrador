@@ -1,0 +1,23 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<!-- This is the package manifest for cell_description. Its dependencies are all run-time ones:
+     the URDF pulls in ur_description and robotiq_description through xacro, and the MuJoCo scene
+     is loaded by mujoco_ros2_control. -->
+<package format="3">
+  <name>cell_description</name>
+  <version>0.1.0</version>
+  <description>Robot and scene description for the manipulation cell: MJCF scene, URDF/xacro, controller config.</description>
+  <maintainer email="dev@example.com">cell developer</maintainer>
+  <license>Apache-2.0</license>
+
+  <buildtool_depend>ament_cmake</buildtool_depend>
+
+  <exec_depend>mujoco_ros2_control</exec_depend>
+  <exec_depend>robotiq_description</exec_depend>
+  <exec_depend>ur_description</exec_depend>
+  <exec_depend>xacro</exec_depend>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>
