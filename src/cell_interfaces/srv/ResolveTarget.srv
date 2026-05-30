@@ -1,0 +1,9 @@
+# This is the workspace node's lookup from a target name to a pose in the workspace frame, served
+# as /workspace/resolve_target. The names it knows are "tray_1" (the tray frame at slot A1),
+# "tray_1/C4" (the centre of a slot's opening), "bin_a" (the centre of the bin floor) and
+# "peg_fixture" (the centre of the hole opening).
+string name
+---
+bool success
+string message
+geometry_msgs/PoseStamped pose

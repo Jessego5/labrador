@@ -1,11 +1,11 @@
 <?xml version="1.0"?>
 <!--
   This is the robot description for the cell, a UR5e with a Robotiq 2F-85 on a table, simulated
-  in MuJoCo through mujoco_ros2_control. robot_state_publisher and the controllers read it, while
-  MuJoCo itself runs mjcf/scene.xml, so the two have to describe the same robot: the joint names
-  must match mjcf/ur5e_2f85.xml, because the MuJoCo actuators are named after their joints. The
-  world frame is the table frame, with the robot base at the origin on the table top.
-  scripts/check_fk.py compares the two models' forward kinematics.
+  in MuJoCo through mujoco_ros2_control. robot_state_publisher and the controllers read it,
+  while MuJoCo itself runs mjcf/scene.xml, so the two have to describe the same robot: the joint
+  names must match mjcf/ur5e_2f85.xml, because the MuJoCo actuators are named after their
+  joints. The world frame is the table frame, with the robot base at the origin on the table
+  top. scripts/check_fk.py compares the URDF and MJCF forward kinematics.
 -->
 <robot name="cell" xmlns:xacro="http://www.ros.org/wiki/xacro">
   <xacro:arg name="headless" default="false"/>

@@ -1,0 +1,35 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<!-- This is the package manifest for cell_workspace. It depends on cell_description at run
+     time and in tests because that is where workspace.yaml and the generated workspace.xml live;
+     the node reads the YAML and test_mjcf_alignment compares the two. -->
+<package format="3">
+  <name>cell_workspace</name>
+  <version>0.1.0</version>
+  <description>Workspace model (trays, slots, bins, fixtures -> poses): a ROS-free C++ library plus a node that publishes static TF and serves ResolveTarget.</description>
+  <maintainer email="dev@example.com">cell developer</maintainer>
+  <license>Apache-2.0</license>
+
+  <buildtool_depend>ament_cmake</buildtool_depend>
+
+  <depend>ament_index_cpp</depend>
+  <depend>cell_interfaces</depend>
+  <depend>eigen</depend>
+  <depend>geometry_msgs</depend>
+  <depend>rclcpp</depend>
+  <depend>rclcpp_components</depend>
+  <depend>tf2_eigen</depend>
+  <depend>tf2_ros</depend>
+  <depend>visualization_msgs</depend>
+  <depend>yaml-cpp</depend>
+
+  <exec_depend>cell_description</exec_depend>
+
+  <test_depend>ament_cmake_gtest</test_depend>
+  <test_depend>cell_description</test_depend>
+  <test_depend>tinyxml2_vendor</test_depend>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>

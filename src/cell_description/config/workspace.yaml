@@ -1,0 +1,32 @@
+# This is the layout of the cell's trays, bins and fixtures, in the `table` frame (origin at the
+# robot base on the table top, x away from the robot, z up), and it is the one source of truth
+# for it. cell_workspace reads it for the slot poses, the static TF frames and the ResolveTarget
+# service, and cell_description/scripts/build_workspace_mjcf.py turns it into the MuJoCo
+# geometry in mjcf/workspace.xml. After editing, regenerate the MJCF with python3
+# scripts/build_workspace_mjcf.py; cell_workspace's test_mjcf_alignment fails until you do.
+frame: table
+
+trays:
+  tray_1:
+    origin: [0.45, -0.10, 0.02]   # m; centre of slot A1 at the tray's top surface
+    yaw: 0.0                      # rad, about table z
+    rows: 4                       # A..D, along the tray's +x
+    cols: 6                       # 1..6, along the tray's +y
+    pitch: [0.040, 0.040]         # m; row spacing, column spacing
+    slot_size: 0.034              # m; square pocket width (must be < pitch)
+    slot_depth: 0.015             # m; pocket depth below the top surface
+
+bins:
+  # center is the centre of the bin floor's top surface and size the outer dimensions (x, y,
+  # wall height)
+  bin_a: {center: [0.30, 0.30, 0.02], size: [0.15, 0.12, 0.08]}
+  bin_b: {center: [0.50, 0.30, 0.02], size: [0.15, 0.12, 0.08]}
+
+fixtures:
+  peg_fixture:
+    # x y z roll pitch yaw of the centre of the hole opening. The first layout had x = 0.60,
+    # which put the block on top of tray_1's row D; validation rejects that, hence 0.66.
+    hole_pose: [0.66, 0.05, 0.05, 0, 0, 0]
+    hole_diameter: 0.022                     # m; peg_0 is 0.020, so 1 mm radial clearance
+    insert_depth: 0.030                      # m
+    block_size: 0.08                         # m; square footprint of the fixture block

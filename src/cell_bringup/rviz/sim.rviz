@@ -23,12 +23,18 @@ Visualization Manager:
       Name: TF
       Enabled: true
       Show Names: false
-      Marker Scale: 0.15
+      Show Arrows: false
+      Marker Scale: 0.06
       Frames:
-        All Enabled: false
-        table: {Value: true}
-        tool0: {Value: true}
-        tcp: {Value: true}
+        All Enabled: true
+    - Class: rviz_default_plugins/MarkerArray
+      Name: Workspace
+      Enabled: true
+      Topic:
+        Value: /workspace/markers
+        Depth: 5
+        Durability Policy: Transient Local
+        Reliability Policy: Reliable
   Global Options:
     Fixed Frame: world
     Frame Rate: 30
@@ -37,9 +43,9 @@ Visualization Manager:
   Views:
     Current:
       Class: rviz_default_plugins/Orbit
-      Distance: 1.8
-      Focal Point: {X: 0.35, Y: 0, Z: 0.2}
-      Pitch: 0.45
+      Distance: 1.5
+      Focal Point: {X: 0.45, Y: 0.05, Z: 0.05}
+      Pitch: 0.6
       Yaw: 2.6
       Target Frame: world
 Window Geometry:

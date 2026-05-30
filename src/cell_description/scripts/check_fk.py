@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """
-This checks that the URDF and the MuJoCo model put the robot in the same place.
-robot_state_publisher and the controllers read the URDF while MuJoCo moves the MJCF, so the two
-have to describe the same robot. It compares world->tcp in the URDF with the MuJoCo site
-robotiq_pinch at the home pose and at 19 random joint configurations and prints the worst
-position and orientation difference, then compares tool0 and the gripper knuckle at home. Run it
-with xacro urdf/cell.urdf.xacro > /tmp/cell.urdf and then
+This checks that the URDF and the MuJoCo model put the robot in the same place. TF is built from
+the URDF while MuJoCo moves the MJCF, so any difference between them is a difference between
+where TF says the tool is and where it is in the simulation. It compares world->tcp in the URDF
+with the MuJoCo site robotiq_pinch at the home pose and at 19 random joint configurations and
+prints the worst position and orientation difference, then compares tool0 and the gripper
+knuckle at home. Run it with xacro urdf/cell.urdf.xacro > /tmp/cell.urdf and then
 python3 scripts/check_fk.py /tmp/cell.urdf mjcf/scene.xml.
 """
 import sys, xml.etree.ElementTree as ET

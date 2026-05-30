@@ -1,8 +1,8 @@
 # This is the ros2_control controller configuration for the cell, loaded by the one
 # ros2_control_node that runs the MuJoCo hardware interface. joint_trajectory_controller moves
-# the arm and gripper_controller drives the 2F-85 through its one driver joint. Only one
-# controller_manager may run at a time: a stale robot_state_publisher's /robot_description gets
-# picked up by a new ros2_control_node.
+# the arm along joint trajectories and gripper_controller drives the 2F-85 through its one
+# driver joint. Only one controller_manager may run at a time: a stale robot_state_publisher's
+# /robot_description gets picked up by a new ros2_control_node.
 
 controller_manager:
   ros__parameters:

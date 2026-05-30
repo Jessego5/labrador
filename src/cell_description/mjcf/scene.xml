@@ -1,13 +1,16 @@
 <!--
   This is the MuJoCo scene for the manipulation cell, the file mujoco_ros2_control loads. It is
-  hand-written and holds the table, the floor, the lights, the overhead camera and the objects;
-  the robot is included from ur5e_2f85.xml, which scripts/build_mjcf.py regenerates from
-  Menagerie, so the robot is edited through that script and not here. The world frame is the
-  `table` frame, with its origin at the robot base on the table top (z = 0), x pointing away
-  from the robot and z up. The objects start at the poses given here.
+  hand-written and holds the table, the floor, the lights, the overhead camera and the objects.
+  The robot and the workspace furniture are included from files that scripts regenerate
+  (ur5e_2f85.xml from Menagerie, workspace.xml from config/workspace.yaml), so those are edited
+  through their sources and not here. The world frame is the `table` frame, with its origin at
+  the robot base on the table top (z = 0), x pointing away from the robot and z up. The objects
+  start at the fixed poses written below.
 -->
 <mujoco model="manipulation_cell">
   <include file="ur5e_2f85.xml"/>
+  <!-- trays, bins and fixtures, generated from config/workspace.yaml -->
+  <include file="workspace.xml"/>
 
   <statistic center="0.4 0 0.2" extent="1.0"/>
 
@@ -46,10 +49,10 @@
     <geom name="table_leg_3" type="box" pos="0.85 -0.6 -0.385" size="0.025 0.025 0.345" material="table"/>
     <geom name="table_leg_4" type="box" pos="0.85 0.6 -0.385" size="0.025 0.025 0.345" material="table"/>
 
-    <!-- the overhead camera, looking straight down at the workspace; nothing reads it yet -->
+    <!-- an overhead camera looking straight down at the workspace -->
     <camera name="overhead" pos="0.45 0 1.0" xyaxes="0 -1 0 1 0 0" fovy="58"/>
 
-    <!-- the objects: red and green cubes, blue cylinders and a yellow peg, each on a free joint -->
+    <!-- the objects: three cubes, four cylinders and the peg -->
     <body name="cube_red_0" pos="0.40 0.15 0.02">
       <freejoint name="cube_red_0"/>
       <geom class="object" type="box" size="0.02 0.02 0.02" material="red"/>
@@ -62,12 +65,20 @@
       <freejoint name="cube_green_0"/>
       <geom class="object" type="box" size="0.02 0.02 0.02" material="green"/>
     </body>
-    <body name="cyl_blue_0" pos="0.35 0.30 0.025">
+    <body name="cyl_blue_0" pos="0.30 -0.05 0.025">
       <freejoint name="cyl_blue_0"/>
       <geom class="object" type="cylinder" size="0.015 0.025" material="blue"/>
     </body>
     <body name="cyl_blue_1" pos="0.62 0.20 0.025">
       <freejoint name="cyl_blue_1"/>
+      <geom class="object" type="cylinder" size="0.015 0.025" material="blue"/>
+    </body>
+    <body name="cyl_blue_2" pos="0.70 -0.15 0.025">
+      <freejoint name="cyl_blue_2"/>
+      <geom class="object" type="cylinder" size="0.015 0.025" material="blue"/>
+    </body>
+    <body name="cyl_blue_3" pos="0.40 -0.30 0.025">
+      <freejoint name="cyl_blue_3"/>
       <geom class="object" type="cylinder" size="0.015 0.025" material="blue"/>
     </body>
     <body name="peg_0" pos="0.25 0.05 0.03">

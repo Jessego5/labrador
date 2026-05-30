@@ -1,9 +1,10 @@
 """
 This brings up the simulated cell: MuJoCo running inside mujoco_ros2_control's
-ros2_control_node, robot_state_publisher, the arm and gripper controllers, and RViz. Only one
-controller_manager may run at a time, since a new ros2_control_node will pick up a stale
-robot_state_publisher's /robot_description, so stop any earlier bring-up before starting this
-one. Run it with ros2 launch cell_bringup sim.launch.py for the MuJoCo viewer and RViz, or with
+ros2_control_node, robot_state_publisher, the arm and gripper controllers, the workspace node
+with its TF frames, and RViz. Only one controller_manager may run at a time, since a new
+ros2_control_node will pick up a stale robot_state_publisher's /robot_description, so stop any
+earlier bring-up before starting this one. Run it with ros2 launch cell_bringup sim.launch.py
+for the MuJoCo viewer and RViz, or with
 ros2 launch cell_bringup sim.launch.py headless:=true rviz:=false for neither.
 """
 from launch import LaunchDescription
@@ -70,6 +71,14 @@ def generate_launch_description():
         )
     )
 
+    # static TF for every tray slot, bin and fixture, plus the ResolveTarget service
+    workspace_node = Node(
+        package="cell_workspace",
+        executable="workspace_node",
+        parameters=[{"use_sim_time": True}],
+        output="both",
+    )
+
     rviz_node = Node(
         package="rviz2",
         executable="rviz2",
@@ -86,5 +95,6 @@ def generate_launch_description():
         ros2_control_node,
         joint_state_broadcaster,
         arm_and_gripper,
+        workspace_node,
         rviz_node,
     ])
