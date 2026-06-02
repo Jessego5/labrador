@@ -21,7 +21,7 @@ import yaml
 PKG = Path(__file__).resolve().parents[1]
 CONFIG = PKG / "config" / "workspace.yaml"
 OUT = PKG / "mjcf" / "workspace.xml"
-BIN_WALL = 0.005  # m, the bins' wall thickness
+BIN_WALL = 0.005  # m, the wall thickness
 
 
 def fmt(*values):

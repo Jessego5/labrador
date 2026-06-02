@@ -2,17 +2,17 @@
 """
 This builds mjcf/ur5e_2f85.xml, the UR5e with a Robotiq 2F-85 on its flange, out of the two
 MuJoCo Menagerie models, so that the robot MuJoCo simulates is the same one the URDF describes
-to mujoco_ros2_control. Menagerie's models are close but do not line up with ur_description and
-robotiq_description as they come, so it changes four things. It removes the 180 degree yaw
-Menagerie puts on the UR5e base, to match ur_description's base_link. It gives every robot body
-gravity compensation. It renames the arm actuators after their joints (shoulder_pan_joint and so
-on), because mujoco_ros2_control finds actuators by joint name. And it attaches the gripper with
-the prefix `robotiq_`, renames the 2F-85's `left_driver_joint` to `85_left_knuckle_joint` so it
-becomes `robotiq_85_left_knuckle_joint`, the actuated joint in robotiq_description, and replaces
-its 0-255 actuator with a position actuator of the same name in radians, 0 open and 0.8 closed.
-The output is committed, so this only needs re-running when the robot model changes, and it
-needs the `mujoco` Python package at the same version as ros-jazzy-mujoco-vendor
-(mujoco==3.12.0). Run it with python3 build_mjcf.py [--menagerie PATH].
+to mujoco_ros2_control and MoveIt. Menagerie's models are close but do not line up with
+ur_description and robotiq_description as they come, so it changes four things. It removes the
+180 degree yaw Menagerie puts on the UR5e base, to match ur_description's base_link. It gives
+every robot body gravity compensation. It renames the arm actuators after their joints
+(shoulder_pan_joint and so on), because mujoco_ros2_control finds actuators by joint name. And
+it attaches the gripper with the prefix `robotiq_`, renames the 2F-85's `left_driver_joint` to
+`85_left_knuckle_joint` so it becomes `robotiq_85_left_knuckle_joint`, the actuated joint in
+robotiq_description, and replaces its 0-255 actuator with a position actuator of the same name
+in radians, 0 open and 0.8 closed. The output is committed, so this only needs re-running when
+the robot model changes, and it needs the `mujoco` Python package at the same version as
+ros-jazzy-mujoco-vendor (mujoco==3.12.0). Run it with python3 build_mjcf.py [--menagerie PATH].
 """
 import argparse
 import os

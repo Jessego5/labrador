@@ -1,6 +1,6 @@
 // This reads workspace.yaml into the workspace model. The format itself is described in
-// cell_description/config/workspace.yaml, the one file both the TF frames and the MuJoCo
-// geometry take the layout from. Every parse error names the key path it came from, such
+// cell_description/config/workspace.yaml, the one file the TF frames, the MuJoCo geometry and
+// the skills all take the layout from. Every parse error names the key path it came from, such
 // as "trays.tray_1.pitch[1]", so a typo in the YAML points straight at the line to fix.
 // Checking that the layout makes sense is left to Workspace::validate().
 #include <stdexcept>

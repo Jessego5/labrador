@@ -1,8 +1,8 @@
 // This is the model of the cell's fixed furniture, the trays with their named slots, the bins
 // and the insertion fixtures, and it is where every named target such as "tray_1/C4" turns into
 // a pose. It is plain C++ over Eigen and yaml-cpp with no ROS in it, so the slot arithmetic and
-// the config checks can be unit tested in milliseconds; the workspace node and the MJCF
-// alignment test both link against it. Every pose is in the workspace
+// the config checks can be unit tested in milliseconds; the workspace node, the skills and the
+// MJCF alignment test all link against it. Every pose is in the workspace
 // frame (`Workspace::frame`, normally "table", whose origin is the robot base on the table top).
 #pragma once
 
@@ -115,6 +115,13 @@ public:
   // The pose of "tray_1", "tray_1/C4", "bin_a" or "peg_fixture". Throws std::invalid_argument
   // for an unknown name and std::out_of_range for a slot that is not there.
   Eigen::Isometry3d resolve(const std::string & target) const;
+
+  // Where a placed object's bottom centre should end up, oriented like the target: the pocket
+  // floor for "tray_1/C4", the floor for "bin_a" and the bottom of the hole for "peg_fixture".
+  // This is not the same as resolve(), which gives the opening a robot aims at; a place has to
+  // know how far down the object comes to rest. Throws std::invalid_argument for an unknown name
+  // or a bare tray name ("tray_1"), and std::out_of_range for a bad slot.
+  Eigen::Isometry3d placePose(const std::string & target) const;
 
   // every tray, slot, bin and fixture frame, for TF
   std::vector<NamedFrame> allFrames() const;

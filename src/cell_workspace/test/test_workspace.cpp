@@ -1,10 +1,10 @@
 // These are the tests for the workspace model, the ROS-free core in workspace.hpp. They pin the
 // slot naming and slot arithmetic exactly (C4 is row 2, column 3, rows run along the tray's x),
-// the pose every kind of target resolves to, the error messages a malformed workspace.yaml
-// produces, and the checks validate() makes, including the overlap check that catches a fixture
-// sitting on a tray. They use a small inline workspace rather than the real workspace.yaml, so a
-// layout change in the cell does not break them. Run them with colcon test --packages-select
-// cell_workspace.
+// the pose every kind of target resolves to, where a placed object comes to rest, the error
+// messages a malformed workspace.yaml produces, and the checks validate() makes, including the
+// overlap check that catches a fixture sitting on a tray. They use a small inline workspace
+// rather than the real workspace.yaml, so a layout change in the cell does not break them. Run
+// them with colcon test --packages-select cell_workspace.
 #include <cmath>
 #include <stdexcept>
 #include <string>
@@ -182,6 +182,23 @@ TEST(Resolve, UnknownNamesThrow)
   EXPECT_THROW(ws.resolve("bin_a/A1"), std::invalid_argument);
   EXPECT_THROW(ws.resolve("tray_1/Q9"), std::out_of_range);
   EXPECT_THROW(ws.resolve("tray_1/c4"), std::invalid_argument);
+}
+
+TEST(Resolve, PlacePoseIsWhereTheObjectBottomRests)
+{
+  const Workspace ws = loadWorkspaceString(kValidYaml);
+  // a slot: the pocket floor, top surface (0.02) minus slot_depth (0.015)
+  const auto slot = ws.placePose("tray_1/C4");
+  EXPECT_TRUE(slot.translation().isApprox(Eigen::Vector3d(0.53, 0.02, 0.005), kTol));
+  EXPECT_TRUE(slot.linear().isApprox(ws.trays[0].pose().linear(), kTol));
+  // a bin: the floor centre
+  EXPECT_TRUE(ws.placePose("bin_a").isApprox(ws.resolve("bin_a"), kTol));
+  // a fixture: the bottom of the hole, along the hole axis
+  EXPECT_TRUE(
+    ws.placePose("peg_fixture").translation().isApprox(Eigen::Vector3d(0.66, 0.05, 0.02), 1e-9));
+  EXPECT_THROW(ws.placePose("tray_1"), std::invalid_argument);
+  EXPECT_THROW(ws.placePose("tray_1/E1"), std::out_of_range);
+  EXPECT_THROW(ws.placePose("nope"), std::invalid_argument);
 }
 
 TEST(Resolve, AllFramesCoversEverySlot)

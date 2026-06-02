@@ -1,0 +1,7 @@
+# These are the Cartesian limits for the Pilz industrial motion planner, which cell.launch.py
+# loads beside OMPL; translation in m/s and m/s^2, rotation in rad/s.
+cartesian_limits:
+  max_trans_vel: 0.5
+  max_trans_acc: 1.0
+  max_trans_dec: -2.0
+  max_rot_vel: 1.57

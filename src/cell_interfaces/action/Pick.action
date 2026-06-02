@@ -1,0 +1,14 @@
+# This is the Pick skill, a top-down pick: the robot approaches above the object, descends,
+# closes the gripper, lifts and then checks that it is still holding something.
+string object_id
+geometry_msgs/PoseStamped object_pose   # centre of the object's bounding box
+geometry_msgs/Vector3 object_size       # bounding box extents (x, y, z) in the object frame
+string grasp_strategy                   # "top" (the default, and the only strategy so far)
+---
+bool success
+cell_interfaces/SkillError error
+string message
+float64 gripper_position                # knuckle angle after the grasp (0 open, 0.8 closed)
+---
+string phase                            # open, approach, descend, grasp, lift, verify
+float32 progress

@@ -1,11 +1,13 @@
 <?xml version="1.0"?>
 <!--
   This is the robot description for the cell, a UR5e with a Robotiq 2F-85 on a table, simulated
-  in MuJoCo through mujoco_ros2_control. robot_state_publisher and the controllers read it,
-  while MuJoCo itself runs mjcf/scene.xml, so the two have to describe the same robot: the joint
-  names must match mjcf/ur5e_2f85.xml, because the MuJoCo actuators are named after their
-  joints. The world frame is the table frame, with the robot base at the origin on the table
-  top. scripts/check_fk.py compares the URDF and MJCF forward kinematics.
+  in MuJoCo through mujoco_ros2_control. MoveIt, robot_state_publisher and the controllers all
+  read it, while MuJoCo itself runs mjcf/scene.xml, so the two have to describe the same robot:
+  the joint names must match mjcf/ur5e_2f85.xml, because the MuJoCo actuators are named after
+  their joints. The world frame is the table frame, with the robot base at the origin on the
+  table top. The arm takes its link lengths from config/ur5e_mujoco_kinematics.yaml, Menagerie's
+  rather than UR's calibration, so URDF and MJCF forward kinematics agree exactly;
+  scripts/check_fk.py checks the agreement.
 -->
 <robot name="cell" xmlns:xacro="http://www.ros.org/wiki/xacro">
   <xacro:arg name="headless" default="false"/>
@@ -40,7 +42,7 @@
     tf_prefix=""
     parent="table"
     joint_limits_parameters_file="$(find ur_description)/config/ur5e/joint_limits.yaml"
-    kinematics_parameters_file="$(find ur_description)/config/ur5e/default_kinematics.yaml"
+    kinematics_parameters_file="$(find cell_description)/config/ur5e_mujoco_kinematics.yaml"
     physical_parameters_file="$(find ur_description)/config/ur5e/physical_parameters.yaml"
     visual_parameters_file="$(find ur_description)/config/ur5e/visual_parameters.yaml">
     <origin xyz="0 0 0" rpy="0 0 0"/>

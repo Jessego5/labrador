@@ -1,0 +1,41 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<!-- The exec_depends are what the skill server and its trial script need at run time but not to
+     build: cell_description for config/workspace.yaml, and rclpy with mujoco_ros2_control_msgs
+     for run_pick_place_trials.py, which moves objects in the simulator. -->
+<package format="3">
+  <name>cell_skills</name>
+  <version>0.1.0</version>
+  <description>Manipulation skills as ROS 2 actions: MoveToNamedPose, Pick, Place.</description>
+  <maintainer email="dev@example.com">cell developer</maintainer>
+  <license>Apache-2.0</license>
+
+  <buildtool_depend>ament_cmake</buildtool_depend>
+
+  <depend>ament_index_cpp</depend>
+  <depend>cell_interfaces</depend>
+  <depend>cell_workspace</depend>
+  <depend>control_msgs</depend>
+  <depend>eigen</depend>
+  <depend>geometry_msgs</depend>
+  <depend>moveit_msgs</depend>
+  <depend>moveit_ros_planning_interface</depend>
+  <depend>rclcpp</depend>
+  <depend>rclcpp_action</depend>
+  <depend>rclcpp_components</depend>
+  <depend>sensor_msgs</depend>
+  <depend>shape_msgs</depend>
+  <depend>tf2_eigen</depend>
+  <depend>tf2_geometry_msgs</depend>
+  <depend>tf2_ros</depend>
+
+  <exec_depend>cell_description</exec_depend>
+  <exec_depend>mujoco_ros2_control_msgs</exec_depend>
+  <exec_depend>rclpy</exec_depend>
+
+  <test_depend>ament_cmake_gtest</test_depend>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>

@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """
-This checks that the URDF and the MuJoCo model put the robot in the same place. TF is built from
-the URDF while MuJoCo moves the MJCF, so any difference between them is a difference between
-where TF says the tool is and where it is in the simulation. It compares world->tcp in the URDF
+This checks that the URDF and the MuJoCo model put the robot in the same place. MoveIt plans on
+the URDF while MuJoCo moves the MJCF, so any difference between them turns straight into
+placement error; the URDF takes Menagerie's link lengths from config/ur5e_mujoco_kinematics.yaml
+so the two agree exactly, and this is how that is confirmed. It compares world->tcp in the URDF
 with the MuJoCo site robotiq_pinch at the home pose and at 19 random joint configurations and
 prints the worst position and orientation difference, then compares tool0 and the gripper
 knuckle at home. Run it with xacro urdf/cell.urdf.xacro > /tmp/cell.urdf and then

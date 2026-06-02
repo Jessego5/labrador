@@ -1,0 +1,12 @@
+# These are the mujoco_ros2_control plugins that ros2_control_node loads next to the robot
+# hardware interface. So far there is one, a publisher of the ground-truth poses of the free
+# bodies.
+/**:
+  ros__parameters:
+    mujoco_plugins:
+      # ground-truth poses of every free body (the objects), used to score runs, and for now as
+      # the object poses the skills are given
+      free_joint_state_publisher:
+        type: "mujoco_ros2_control_plugins/FreeJointStatePublisherPlugin"
+        frame_id: ""   # a MuJoCo body name; empty means the MuJoCo world, which is the table frame
+        publish_rate: 50.0

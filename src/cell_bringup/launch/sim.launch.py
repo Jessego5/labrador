@@ -1,11 +1,12 @@
 """
-This brings up the simulated cell: MuJoCo running inside mujoco_ros2_control's
-ros2_control_node, robot_state_publisher, the arm and gripper controllers, the workspace node
-with its TF frames, and RViz. Only one controller_manager may run at a time, since a new
-ros2_control_node will pick up a stale robot_state_publisher's /robot_description, so stop any
-earlier bring-up before starting this one. Run it with ros2 launch cell_bringup sim.launch.py
-for the MuJoCo viewer and RViz, or with
-ros2 launch cell_bringup sim.launch.py headless:=true rviz:=false for neither.
+This brings up the simulated cell without any planning or skills: MuJoCo running inside
+mujoco_ros2_control's ros2_control_node, robot_state_publisher, the arm and gripper controllers,
+the workspace node with its TF frames, and RViz. cell.launch.py includes it and adds MoveIt and
+the skills on top. Only one controller_manager may run at a time, since a new ros2_control_node
+will pick up a stale robot_state_publisher's /robot_description, so stop any earlier bring-up
+before starting this one. Run it with ros2 launch cell_bringup sim.launch.py for the MuJoCo
+viewer and RViz, or with ros2 launch cell_bringup sim.launch.py headless:=true rviz:=false for
+neither.
 """
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, RegisterEventHandler, Shutdown
@@ -23,6 +24,7 @@ def generate_launch_description():
 
     description_share = FindPackageShare("cell_description")
     controllers_file = PathJoinSubstitution([description_share, "config", "ros2_controllers.yaml"])
+    mujoco_plugins_file = PathJoinSubstitution([description_share, "config", "mujoco_plugins.yaml"])
 
     # the URDF from xacro; headless goes on to the MuJoCo hardware interface in its ros2_control
     robot_description = {
@@ -49,7 +51,11 @@ def generate_launch_description():
         executable="ros2_control_node",
         emulate_tty=True,
         output="both",
-        parameters=[{"use_sim_time": True}, ParameterFile(controllers_file)],
+        parameters=[
+            {"use_sim_time": True},
+            ParameterFile(controllers_file),
+            ParameterFile(mujoco_plugins_file),
+        ],
         on_exit=Shutdown(),
     )
 

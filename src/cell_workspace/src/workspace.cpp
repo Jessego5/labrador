@@ -251,6 +251,34 @@ Eigen::Isometry3d Workspace::resolve(const std::string & target) const
   throw std::invalid_argument("unknown workspace target '" + target + "'");
 }
 
+Eigen::Isometry3d Workspace::placePose(const std::string & target) const
+{
+  const auto slash = target.find('/');
+  const std::string base = target.substr(0, slash);
+  for (const auto & t : trays) {
+    if (t.name == base) {
+      if (slash == std::string::npos) {
+        throw std::invalid_argument(
+                "cannot place on tray '" + target + "' itself; name a slot, e.g. '" + target +
+                "/A1'");
+      }
+      Eigen::Isometry3d pose = t.slotPose(target.substr(slash + 1));
+      pose.translate(Eigen::Vector3d(0.0, 0.0, -t.slot_depth));
+      return pose;
+    }
+  }
+  if (slash == std::string::npos) {
+    for (const auto & f : fixtures) {
+      if (f.name == target) {
+        Eigen::Isometry3d pose = f.hole_pose;
+        pose.translate(Eigen::Vector3d(0.0, 0.0, -f.insert_depth));
+        return pose;
+      }
+    }
+  }
+  return resolve(target);  // bins: the floor centre; unknown names throw
+}
+
 std::vector<Workspace::NamedFrame> Workspace::allFrames() const
 {
   std::vector<NamedFrame> frames;

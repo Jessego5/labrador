@@ -1,7 +1,7 @@
 # This is the ros2_control controller configuration for the cell, loaded by the one
 # ros2_control_node that runs the MuJoCo hardware interface. joint_trajectory_controller moves
-# the arm along joint trajectories and gripper_controller drives the 2F-85 through its one
-# driver joint. Only one controller_manager may run at a time: a stale robot_state_publisher's
+# the arm along MoveIt's plans, and gripper_controller drives the 2F-85 through its one driver
+# joint. Only one controller_manager may run at a time: a stale robot_state_publisher's
 # /robot_description gets picked up by a new ros2_control_node.
 
 controller_manager:
@@ -42,7 +42,8 @@ joint_trajectory_controller:
 
 # The 2F-85 is commanded on robotiq_85_left_knuckle_joint in radians, 0 open and 0.8 closed.
 # Closing on an object ends in a stall rather than at the goal, so the stall check decides when a
-# grasp is done.
+# grasp is done. stall_velocity_threshold had to be about 0.02 in the sim, or close-on-object
+# goals never finished.
 gripper_controller:
   ros__parameters:
     type: parallel_gripper_action_controller/GripperActionController
@@ -52,5 +53,5 @@ gripper_controller:
       - velocity
     goal_tolerance: 0.02
     allow_stalling: true
-    stall_timeout: 0.5
-    stall_velocity_threshold: 0.002
+    stall_timeout: 0.3
+    stall_velocity_threshold: 0.02  # rad/s; holding, the simulated linkage jitters above 0.002

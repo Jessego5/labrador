@@ -1,0 +1,16 @@
+# These are the UR5e kinematics of the MuJoCo Menagerie model (mjcf/ur5e_2f85.xml), written in
+# ur_description's format so the URDF can use them in place of UR's calibration. MoveIt plans on
+# the URDF while the sim moves the MJCF, and ur_description's nominal values differ from
+# Menagerie's by up to 0.7 mm per link (1.5 mm at the TCP), which is too much for 2 mm placement
+# clearance; with these the two forward kinematics agree exactly. The values come from the MJCF
+# body offsets: shoulder z = 0.163, upper arm 0.425, forearm 0.392,
+# wrist_1 z = 0.138 - 0.131 + 0.127, and wrist_2 = wrist_3 = 0.100. Check them with
+# python3 scripts/check_fk.py.
+kinematics:
+  shoulder: {x: 0, y: 0, z: 0.163, roll: 0, pitch: 0, yaw: 0}
+  upper_arm: {x: 0, y: 0, z: 0, roll: 1.570796327, pitch: 0, yaw: 0}
+  forearm: {x: -0.425, y: 0, z: 0, roll: 0, pitch: 0, yaw: 0}
+  wrist_1: {x: -0.392, y: 0, z: 0.134, roll: 0, pitch: 0, yaw: 0}
+  wrist_2: {x: 0, y: -0.100, z: 0, roll: 1.570796327, pitch: 0, yaw: 0}
+  wrist_3: {x: 0, y: 0.100, z: 0, roll: 1.570796326589793, pitch: 3.141592653589793, yaw: 3.141592653589793}
+  hash: mujoco_menagerie_ur5e

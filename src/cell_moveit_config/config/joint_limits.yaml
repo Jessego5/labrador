@@ -1,0 +1,17 @@
+# These are the velocity and acceleration limits MoveIt's time parameterization uses to turn a
+# planned path into a trajectory for the cell's arm and gripper. The UR5e allows 180 deg/s on
+# every joint. Acceleration is not in the URDF, so it is set here, and kept conservative for a
+# simulated payload. The joint position ranges are not here: they come from the URDF.
+#
+# plans run at 30% of these limits unless a request sets its own scaling
+default_velocity_scaling_factor: 0.3
+default_acceleration_scaling_factor: 0.3
+
+joint_limits:
+  shoulder_pan_joint: {has_velocity_limits: true, max_velocity: 3.14159, has_acceleration_limits: true, max_acceleration: 5.0}
+  shoulder_lift_joint: {has_velocity_limits: true, max_velocity: 3.14159, has_acceleration_limits: true, max_acceleration: 5.0}
+  elbow_joint: {has_velocity_limits: true, max_velocity: 3.14159, has_acceleration_limits: true, max_acceleration: 5.0}
+  wrist_1_joint: {has_velocity_limits: true, max_velocity: 3.14159, has_acceleration_limits: true, max_acceleration: 5.0}
+  wrist_2_joint: {has_velocity_limits: true, max_velocity: 3.14159, has_acceleration_limits: true, max_acceleration: 5.0}
+  wrist_3_joint: {has_velocity_limits: true, max_velocity: 3.14159, has_acceleration_limits: true, max_acceleration: 5.0}
+  robotiq_85_left_knuckle_joint: {has_velocity_limits: true, max_velocity: 0.5, has_acceleration_limits: true, max_acceleration: 5.0}

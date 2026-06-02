@@ -1,0 +1,9 @@
+# This is the MoveToNamedPose skill, which plans and moves the arm to a named pose from the SRDF
+# such as "home" or "observe".
+string name
+---
+bool success
+cell_interfaces/SkillError error
+string message
+---
+float32 progress   # 0..1
