@@ -1,0 +1,13 @@
+# This is the DetectObjects skill: the robot first moves to the observe pose (shoulder pan -90
+# degrees, out of the overhead camera's view), and then the skill asks perception for the objects
+# in a fresh frame.
+string object_class   # filters, empty matches everything
+string color
+---
+bool success
+cell_interfaces/SkillError error
+string message
+cell_interfaces/DetectedObject[] objects
+---
+string phase          # move, capture
+float32 progress

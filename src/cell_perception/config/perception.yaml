@@ -1,0 +1,28 @@
+# These are the detector settings for cell_perception: the colour thresholds, the region where
+# objects are accepted, and the tolerances for matching a blob to an object type. The object types
+# themselves are not here, they come from cell_description/config/objects.yaml, which the MuJoCo
+# objects are generated from too. perception_node loads this file at start-up through its
+# perception_file parameter, and values left out fall back to the defaults in detector.hpp.
+
+# HSV thresholds per colour, in OpenCV's ranges (H 0..180, S and V 0..255). A colour can have
+# several ranges and they are unioned, which is how red wraps around H = 0. Blue needs a high
+# saturation so the light-blue tray and the robot's blue caps are left out.
+colors:
+  red:
+    - {lo: [0, 120, 50], hi: [8, 255, 255]}
+    - {lo: [172, 120, 50], hi: [180, 255, 255]}
+  green:
+    - {lo: [45, 120, 40], hi: [85, 255, 255]}
+  blue:
+    - {lo: [100, 170, 40], hi: [125, 255, 255]}
+  yellow:
+    - {lo: [18, 120, 70], hi: [35, 255, 255]}
+
+# where object centres are accepted, in the table frame (m), which leaves out the robot base area
+roi: {x: [0.15, 0.85], y: [-0.55, 0.55]}
+
+min_area_px: 25          # the 20 mm peg is ~9 px across at 640x480
+top_band: 0.0015         # m; tight, so the top strip of visible side faces is excluded
+max_size_error: 0.012    # m
+max_height_error: 0.015  # m
+top_height: [0.005, 0.15]

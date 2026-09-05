@@ -1,6 +1,9 @@
 # This is the inverse kinematics setup for the arm group, KDL's numerical solver over the chain
-# from base_link to tcp. move_group uses it for the pose goals the skills plan to, searching
-# within the URDF's joint ranges.
+# from base_link to tcp. move_group's /compute_ik solves with it, and the skills plan to a
+# collision-free /compute_ik solution seeded from the current joints rather than handing OMPL a
+# pose goal, because OMPL's sampled IK for pose goals caused 3 of 50 planning failures in the
+# part 4 benchmark. KDL searches only within the URDF's joint ranges, which
+# cell_description/config/ur5e_joint_limits.yaml narrows to one IK branch.
 arm:
   kinematics_solver: kdl_kinematics_plugin/KDLKinematicsPlugin
   kinematics_solver_search_resolution: 0.005

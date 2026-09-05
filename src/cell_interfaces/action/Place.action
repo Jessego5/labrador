@@ -3,7 +3,8 @@
 string target_name                      # workspace target, e.g. "tray_1/C4" or "bin_a"
 geometry_msgs/PoseStamped target_pose   # used when target_name is empty: where the object's
                                         # bottom centre should end up
-bool use_compliance                     # not implemented yet; the place uses position control
+bool use_compliance                     # not available yet: the skill server warns and
+                                        # uses position control
 ---
 bool success
 cell_interfaces/SkillError error

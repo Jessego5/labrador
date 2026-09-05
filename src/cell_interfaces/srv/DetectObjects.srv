@@ -1,0 +1,8 @@
+# This is the perception node's service: it captures a fresh camera frame and returns the objects
+# detected in it. Empty filters match everything.
+string object_class
+string color
+---
+bool success
+string message
+DetectedObjectArray detections

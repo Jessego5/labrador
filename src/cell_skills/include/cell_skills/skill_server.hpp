@@ -1,12 +1,13 @@
 // This is the skill server, the node that offers the cell's skills as ROS 2 actions under
-// /skills/: MoveToNamedPose, Pick and Place. run_pick_place_trials.py is its client, and
-// cell.launch.py starts it next to move_group. All three live in one node so they share one
-// MoveGroupInterface and the record of the held object that Pick hands on to Place. Only one
-// skill runs at a time, and a goal that arrives while another is running is rejected rather than
-// queued.
+// /skills/: MoveToNamedPose, DetectObjects, Pick and Place. The trial scripts and benchmarks are
+// its clients, and cell.launch.py starts it next to move_group. All four live in one node so
+// they share one MoveGroupInterface and the record of the held object that Pick hands on to
+// Place. Only one skill runs at a time, and a goal that arrives while another is running is
+// rejected rather than queued.
 #pragma once
 
 #include <atomic>
+#include <map>
 #include <memory>
 #include <mutex>
 #include <optional>
@@ -15,14 +16,17 @@
 
 #include <Eigen/Geometry>
 
+#include "cell_interfaces/action/detect_objects.hpp"
 #include "cell_interfaces/action/move_to_named_pose.hpp"
 #include "cell_interfaces/action/pick.hpp"
 #include "cell_interfaces/action/place.hpp"
 #include "cell_interfaces/msg/skill_error.hpp"
+#include "cell_interfaces/srv/detect_objects.hpp"
 #include "cell_skills/grasp_geometry.hpp"
 #include "cell_workspace/workspace.hpp"
 #include "control_msgs/action/parallel_gripper_command.hpp"
 #include "geometry_msgs/msg/pose_stamped.hpp"
+#include "moveit_msgs/srv/get_position_ik.hpp"
 #include "moveit/move_group_interface/move_group_interface.hpp"
 #include "rclcpp/rclcpp.hpp"
 #include "rclcpp_action/rclcpp_action.hpp"
@@ -46,6 +50,8 @@ class SkillServer : public rclcpp::Node
 {
 public:
   using MoveToNamedPose = cell_interfaces::action::MoveToNamedPose;
+  using DetectObjects = cell_interfaces::action::DetectObjects;
+  using DetectService = cell_interfaces::srv::DetectObjects;
   using Pick = cell_interfaces::action::Pick;
   using Place = cell_interfaces::action::Place;
   using SkillError = cell_interfaces::msg::SkillError;
@@ -90,12 +96,14 @@ private:
 
   // skills
   void executeMoveToNamedPose(std::shared_ptr<rclcpp_action::ServerGoalHandle<MoveToNamedPose>> gh);
+  void executeDetectObjects(std::shared_ptr<rclcpp_action::ServerGoalHandle<DetectObjects>> gh);
   void executePick(std::shared_ptr<rclcpp_action::ServerGoalHandle<Pick>> gh);
   void executePlace(std::shared_ptr<rclcpp_action::ServerGoalHandle<Place>> gh);
 
   // motion and gripper primitives, which throw SkillFailure
   void planAndExecute(const std::string & what);
   void moveToPose(const Eigen::Isometry3d & tcp_pose, const std::string & what);
+  bool solveIk(const geometry_msgs::msg::PoseStamped & target, std::map<std::string, double> & joints);
   void moveToNamed(const std::string & name);
   void moveLinear(const Eigen::Isometry3d & tcp_pose, const std::string & what);
   double commandGripper(double position);
@@ -117,6 +125,8 @@ private:
   double release_opening_;
   double release_min_opening_;
   double gripper_timeout_;
+  std::string observe_pose_;
+  double detect_timeout_;
   GraspParams grasp_params_;
 
   // state
@@ -133,12 +143,16 @@ private:
   rclcpp::CallbackGroup::SharedPtr server_group_;
   rclcpp::CallbackGroup::SharedPtr gripper_group_;
   rclcpp::CallbackGroup::SharedPtr state_group_;
+  rclcpp::CallbackGroup::SharedPtr perception_group_;
   rclcpp::TimerBase::SharedPtr init_timer_;
   rclcpp::Subscription<sensor_msgs::msg::JointState>::SharedPtr joint_state_sub_;
   rclcpp_action::Client<GripperCommand>::SharedPtr gripper_client_;
+  rclcpp::Client<DetectService>::SharedPtr detect_client_;
+  rclcpp::Client<moveit_msgs::srv::GetPositionIK>::SharedPtr ik_client_;
   std::shared_ptr<tf2_ros::Buffer> tf_buffer_;
   std::shared_ptr<tf2_ros::TransformListener> tf_listener_;
   rclcpp_action::Server<MoveToNamedPose>::SharedPtr move_to_named_pose_server_;
+  rclcpp_action::Server<DetectObjects>::SharedPtr detect_server_;
   rclcpp_action::Server<Pick>::SharedPtr pick_server_;
   rclcpp_action::Server<Place>::SharedPtr place_server_;
 };

@@ -1,0 +1,36 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<!--
+  This is the package manifest for cell_perception. cell_description is only an exec_depend
+  because the node reads its config/objects.yaml at run time, to know which object types to look
+  for; nothing is built against it.
+-->
+<package format="3">
+  <name>cell_perception</name>
+  <version>0.1.0</version>
+  <description>Colour + depth object detection from the overhead camera; DetectObjects service.</description>
+  <maintainer email="dev@example.com">cell developer</maintainer>
+  <license>Apache-2.0</license>
+
+  <buildtool_depend>ament_cmake</buildtool_depend>
+
+  <depend>ament_index_cpp</depend>
+  <depend>cell_interfaces</depend>
+  <depend>cv_bridge</depend>
+  <depend>eigen</depend>
+  <depend>libopencv-dev</depend>
+  <depend>rclcpp</depend>
+  <depend>sensor_msgs</depend>
+  <depend>std_srvs</depend>
+  <depend>tf2_eigen</depend>
+  <depend>tf2_ros</depend>
+  <depend>yaml-cpp</depend>
+
+  <exec_depend>cell_description</exec_depend>
+
+  <test_depend>ament_cmake_gtest</test_depend>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>

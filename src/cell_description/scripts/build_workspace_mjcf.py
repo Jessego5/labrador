@@ -7,8 +7,8 @@ tray's frame is at slot A1's centre on the top surface, with rows along the tray
 columns along its +y, and the tray body sits on the table, `origin z` tall, with square pockets
 `slot_depth` deep. A bin's `center` is the floor's top surface and its `size` the outer x, y and
 wall height. A fixture's `hole_pose` is the centre of the hole opening; the hole is square with
-a side equal to the diameter. It also writes a site for every workspace frame, directly under
-<worldbody> in world coordinates and named like its TF frame (tray_1_C4), and cell_workspace's
+a side equal to the diameter. It also writes a site for every workspace frame, directly under <worldbody> in
+world coordinates and named like its TF frame (tray_1_C4), and cell_workspace's
 test_mjcf_alignment compares those with the C++ model, so the two implementations check each
 other. The sites are in group 3, hidden by default; press 3 in the MuJoCo viewer to show them.
 Run it with python3 build_workspace_mjcf.py (it needs PyYAML).
@@ -21,7 +21,7 @@ import yaml
 PKG = Path(__file__).resolve().parents[1]
 CONFIG = PKG / "config" / "workspace.yaml"
 OUT = PKG / "mjcf" / "workspace.xml"
-BIN_WALL = 0.005  # m, the wall thickness
+BIN_WALL = 0.005  # m, bin wall thickness
 
 
 def fmt(*values):
@@ -138,7 +138,7 @@ def fixture(name, f):
         box(f"{name}_wall_yn", (0, -side, zc), (d / 2, wall, hz), "ws_fixture"),
         box(f"{name}_wall_yp", (0, side, zc), (d / 2, wall, hz), "ws_fixture"),
     ]
-    # The block stands on the table, so only the yaw of hole_pose applies to the geometry.
+    # the block stands on the table, so only the yaw of hole_pose applies to the geometry
     body = [f'    <body name="{name}" pos="{fmt(x, y, 0)}" quat="{fmt(*yaw_quat(yaw))}">',
             *geoms, "    </body>"]
     return body, [site(name, (x, y, z), rpy_quat(roll, pitch, yaw))]

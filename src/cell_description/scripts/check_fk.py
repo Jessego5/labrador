@@ -6,7 +6,8 @@ placement error; the URDF takes Menagerie's link lengths from config/ur5e_mujoco
 so the two agree exactly, and this is how that is confirmed. It compares world->tcp in the URDF
 with the MuJoCo site robotiq_pinch at the home pose and at 19 random joint configurations and
 prints the worst position and orientation difference, then compares tool0 and the gripper
-knuckle at home. Run it with xacro urdf/cell.urdf.xacro > /tmp/cell.urdf and then
+knuckle at home, and the overhead camera's optical frame with the MJCF camera. Run it with
+xacro urdf/cell.urdf.xacro > /tmp/cell.urdf and then
 python3 scripts/check_fk.py /tmp/cell.urdf mjcf/scene.xml.
 """
 import sys, xml.etree.ElementTree as ET
@@ -78,3 +79,15 @@ kb = m.jnt_bodyid[m.joint("robotiq_85_left_knuckle_joint").id]
 Ra = d.site_xmat[a].reshape(3, 3)
 print("MJ left knuckle in attachment frame:", np.round(Ra.T @ (d.xpos[kb] - d.site_xpos[a]), 4))
 print("MJ left knuckle in URDF tool0 frame:", np.round(T0[:3, :3].T @ (d.xpos[kb] - T0[:3, 3]), 4))
+
+# The overhead camera, the URDF optical frame against the MJCF camera. MuJoCo cameras look
+# along -z with y up, while the ROS optical frame looks along +z with y down, so the optical
+# frame is the MJCF camera times diag(1, -1, -1).
+if "overhead_camera_optical_frame" in J:
+    c = m.camera("overhead").id
+    mujoco.mj_forward(m, d)  # camera poses are computed by mj_camlight, not mj_kinematics
+    R_opt = d.cam_xmat[c].reshape(3, 3) @ np.diag([1.0, -1.0, -1.0])
+    Tc = urdf_fk("overhead_camera_optical_frame", {})
+    cam_dp = np.linalg.norm(Tc[:3, 3] - d.cam_xpos[c])
+    cam_ang = np.degrees(np.arccos(np.clip((np.trace(Tc[:3, :3].T @ R_opt) - 1) / 2, -1, 1)))
+    print(f"overhead camera: position {1000 * cam_dp:.3f} mm, orientation {cam_ang:.3f} deg")

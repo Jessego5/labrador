@@ -1,9 +1,9 @@
 // This is the implementation of the skill server declared in skill_server.hpp: the setup that
-// waits for move_group and the controllers, the three skills, and the motion and gripper
+// waits for move_group and the controllers, the four skills, and the motion and gripper
 // primitives the skills are built from. Every skill runs in a thread of its own and goes through
 // one wrapper, run(), so they all succeed, fail and report in the same way, with a SkillError
-// code and a message. Some of the rules in here were learnt in simulation, the release that opens
-// only part way and the retreat before a failure is reported, and the comments next to them say
+// code and a message. Several of the rules in here were learnt in simulation, the release that
+// opens only part way and the IK goal instead of a pose goal, and the comments next to them say
 // what went wrong.
 #include "cell_skills/skill_server.hpp"
 
@@ -20,6 +20,7 @@
 #include "ament_index_cpp/get_package_share_directory.hpp"
 #include "control_msgs/action/follow_joint_trajectory.hpp"
 #include "moveit/planning_scene_interface/planning_scene_interface.hpp"
+#include "moveit/robot_state/conversions.hpp"
 #include "moveit_msgs/msg/collision_object.hpp"
 #include "rclcpp_components/register_node_macro.hpp"
 #include "shape_msgs/msg/solid_primitive.hpp"
@@ -66,6 +67,8 @@ SkillServer::SkillServer(const rclcpp::NodeOptions & options)
   release_opening_ = param("release_opening", 0.25);
   release_min_opening_ = param("release_min_opening", 0.1);
   gripper_timeout_ = param("gripper_timeout", 5.0);
+  observe_pose_ = param<std::string>("observe_pose", "observe");
+  detect_timeout_ = param("detect_timeout", 15.0);
   grasp_params_.grasp_depth = param("grasp_depth", grasp_params_.grasp_depth);
   grasp_params_.fingertip_reach = param("fingertip_reach", grasp_params_.fingertip_reach);
   grasp_params_.surface_clearance = param("surface_clearance", grasp_params_.surface_clearance);
@@ -81,6 +84,7 @@ SkillServer::SkillServer(const rclcpp::NodeOptions & options)
   server_group_ = create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
   gripper_group_ = create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
   state_group_ = create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
+  perception_group_ = create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
   rclcpp::SubscriptionOptions sub_options;
   sub_options.callback_group = state_group_;
   joint_state_sub_ = create_subscription<sensor_msgs::msg::JointState>(
@@ -97,11 +101,20 @@ SkillServer::SkillServer(const rclcpp::NodeOptions & options)
   gripper_client_ = rclcpp_action::create_client<GripperCommand>(
     this, param<std::string>("gripper_action", "/gripper_controller/gripper_cmd"), gripper_group_);
 
+  detect_client_ = create_client<DetectService>(
+    param<std::string>("detect_service", "/perception/detect"), rclcpp::ServicesQoS(),
+    perception_group_);
+
+  ik_client_ = create_client<moveit_msgs::srv::GetPositionIK>(
+    "/compute_ik", rclcpp::ServicesQoS(), perception_group_);
+
   tf_buffer_ = std::make_shared<tf2_ros::Buffer>(get_clock());
   tf_listener_ = std::make_shared<tf2_ros::TransformListener>(*tf_buffer_);
 
   move_to_named_pose_server_ =
     makeServer<MoveToNamedPose>("~/move_to_named_pose", &SkillServer::executeMoveToNamedPose);
+  detect_server_ =
+    makeServer<DetectObjects>("~/detect_objects", &SkillServer::executeDetectObjects);
   pick_server_ = makeServer<Pick>("~/pick", &SkillServer::executePick);
   place_server_ = makeServer<Place>("~/place", &SkillServer::executePlace);
 
@@ -271,6 +284,9 @@ void SkillServer::run(
   }
   const double secs = std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
 
+  // Free the server before reporting the result. A client may send its next goal as soon as it
+  // has the result, and that goal would be rejected as busy if the flag were still set.
+  busy_ = false;
   if (result->success) {
     RCLCPP_INFO(get_logger(), "%s succeeded in %.2f s", skill.c_str(), secs);
     goal_handle->succeed(result);
@@ -283,7 +299,6 @@ void SkillServer::run(
       result->error.code, result->message.c_str());
     goal_handle->abort(result);
   }
-  busy_ = false;
 }
 
 template<typename ActionT>
@@ -321,6 +336,40 @@ void SkillServer::executeMoveToNamedPose(
       feedback(gh, "", 0.0f);
       moveToNamed(name);
       feedback(gh, "", 1.0f);
+    });
+}
+
+void SkillServer::executeDetectObjects(
+  std::shared_ptr<rclcpp_action::ServerGoalHandle<DetectObjects>> gh)
+{
+  run(
+    gh, "DetectObjects", [&](DetectObjects::Result & result) {
+      const auto goal = gh->get_goal();
+      // get the arm out of the overhead camera's view first, at the observe pose
+      feedback(gh, "move", 0.0f);
+      moveToNamed(observe_pose_);
+      checkCancel(gh);
+
+      feedback(gh, "capture", 0.6f);
+      if (!detect_client_->wait_for_service(2s)) {
+        throw SkillFailure(SkillError::PERCEPTION_FAILED, "perception service not available");
+      }
+      auto request = std::make_shared<DetectService::Request>();
+      request->object_class = goal->object_class;
+      request->color = goal->color;
+      auto future = detect_client_->async_send_request(request);
+      if (future.wait_for(std::chrono::duration<double>(detect_timeout_)) !=
+        std::future_status::ready)
+      {
+        detect_client_->remove_pending_request(future);
+        throw SkillFailure(SkillError::TIMEOUT, "perception did not answer in time");
+      }
+      const auto response = future.get();
+      if (!response->success) {
+        throw SkillFailure(SkillError::PERCEPTION_FAILED, response->message);
+      }
+      result.objects = response->detections.objects;
+      result.message = std::to_string(result.objects.size()) + " object(s)";
     });
 }
 
@@ -411,8 +460,7 @@ void SkillServer::executePlace(std::shared_ptr<rclcpp_action::ServerGoalHandle<P
       } else {
         target = toPlanningFrame(goal->target_pose);
       }
-      // use_compliance is not implemented yet: the request is logged and the place goes ahead
-      // under position control
+      // there is no compliant place yet, so the flag only earns a warning
       if (goal->use_compliance) {
         RCLCPP_WARN(get_logger(), "use_compliance requested but not available yet; using position control");
       }
@@ -479,8 +527,59 @@ void SkillServer::moveToPose(const Eigen::Isometry3d & tcp_pose, const std::stri
   target.header.frame_id = planning_frame_;
   target.pose = tf2::toMsg(tcp_pose);
   move_group_->setStartStateToCurrentState();
-  move_group_->setPoseTarget(target, tcp_link_);
+  // Plan to a collision-free IK solution seeded from the current joints rather than to the pose
+  // itself. Given a pose goal, OMPL samples its own IK and occasionally commits to an awkward
+  // configuration it cannot connect within the planning time; in the part 4 benchmark that caused 3
+  // failures out of 50. Without an IK solution the skill falls back to the pose goal.
+  std::map<std::string, double> joints;
+  if (solveIk(target, joints)) {
+    std::string values;
+    for (const auto & [name, value] : joints) {
+      values += " " + name.substr(0, name.find("_joint")) + "=" + fmt("%.2f", value);
+    }
+    RCLCPP_DEBUG(get_logger(), "%s: planning to IK solution%s", what.c_str(), values.c_str());
+    move_group_->setJointValueTarget(joints);
+  } else {
+    RCLCPP_WARN(get_logger(), "%s: no collision-free IK solution; planning to the pose", what.c_str());
+    move_group_->setPoseTarget(target, tcp_link_);
+  }
   planAndExecute(what);
+}
+
+bool SkillServer::solveIk(
+  const geometry_msgs::msg::PoseStamped & target, std::map<std::string, double> & joints)
+{
+  if (!ik_client_->wait_for_service(1s)) {
+    return false;
+  }
+  auto request = std::make_shared<moveit_msgs::srv::GetPositionIK::Request>();
+  request->ik_request.group_name = arm_group_;
+  request->ik_request.ik_link_name = tcp_link_;
+  request->ik_request.pose_stamped = target;
+  request->ik_request.avoid_collisions = true;
+  request->ik_request.timeout = rclcpp::Duration::from_seconds(0.2);
+  const auto current = move_group_->getCurrentState(1.0);
+  if (!current) {
+    return false;
+  }
+  moveit::core::robotStateToRobotStateMsg(*current, request->ik_request.robot_state);
+  auto future = ik_client_->async_send_request(request);
+  if (future.wait_for(3s) != std::future_status::ready) {
+    ik_client_->remove_pending_request(future);
+    return false;
+  }
+  const auto response = future.get();
+  if (response->error_code.val != moveit_msgs::msg::MoveItErrorCodes::SUCCESS) {
+    return false;
+  }
+  const auto active = move_group_->getActiveJoints();
+  const auto & js = response->solution.joint_state;
+  for (std::size_t i = 0; i < js.name.size() && i < js.position.size(); ++i) {
+    if (std::find(active.begin(), active.end(), js.name[i]) != active.end()) {
+      joints[js.name[i]] = js.position[i];
+    }
+  }
+  return joints.size() == active.size();
 }
 
 void SkillServer::moveToNamed(const std::string & name)
@@ -535,8 +634,7 @@ double SkillServer::commandGripper(double position)
     gripper_client_->async_cancel_all_goals();
     throw SkillFailure(SkillError::TIMEOUT, "gripper did not finish in time");
   }
-  // Closing on an object ends in a stall rather than at the goal, which is expected; the caller
-  // checks the position.
+  // closing on an object ends in a stall, which is expected; the caller checks the position
   std::this_thread::sleep_for(200ms);
   return gripperPosition();
 }

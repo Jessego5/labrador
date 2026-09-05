@@ -1,7 +1,8 @@
 # These are the velocity and acceleration limits MoveIt's time parameterization uses to turn a
 # planned path into a trajectory for the cell's arm and gripper. The UR5e allows 180 deg/s on
 # every joint. Acceleration is not in the URDF, so it is set here, and kept conservative for a
-# simulated payload. The joint position ranges are not here: they come from the URDF.
+# simulated payload. The joint position ranges are not here: they come from the URDF, which
+# takes them from cell_description/config/ur5e_joint_limits.yaml.
 #
 # plans run at 30% of these limits unless a request sets its own scaling
 default_velocity_scaling_factor: 0.3

@@ -1,8 +1,8 @@
 """
-This brings up the whole cell: the simulation from sim.launch.py, MoveIt's move_group and the
-skill server with its Pick, Place and MoveToNamedPose actions. It is what
-run_pick_place_trials.py runs against. Run it with ros2 launch cell_bringup cell.launch.py, or
-add headless:=true rviz:=false to run without the MuJoCo viewer and RViz.
+This brings up the whole cell: the simulation from sim.launch.py, MoveIt's move_group, the
+skill server and the perception node. It is what the benchmarks run against. Run it with
+ros2 launch cell_bringup cell.launch.py, or add headless:=true rviz:=false to run without the
+MuJoCo viewer and RViz.
 """
 import os
 
@@ -72,10 +72,18 @@ def generate_launch_description():
         ],
     )
 
+    perception = Node(
+        package="cell_perception",
+        executable="perception_node",
+        output="screen",
+        parameters=[sim_time],
+    )
+
     return LaunchDescription([
         DeclareLaunchArgument("headless", default_value="false"),
         DeclareLaunchArgument("rviz", default_value="true"),
         sim,
         move_group,
         skills,
+        perception,
     ])

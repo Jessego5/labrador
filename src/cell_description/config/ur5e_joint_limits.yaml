@@ -1,0 +1,61 @@
+# These are the UR5e joint limits for this cell, in ur_description's format, read by the URDF.
+# The velocities and efforts are UR's; the position ranges are narrowed from UR's +-360 deg to
+# one IK branch, with the elbow up, the upper arm above the shoulder and every joint within one
+# turn. Without this, MoveIt's IK can return any of dozens of equivalent configurations (the
+# base swung round, the wrists wound up), which made OMPL time out and produced needlessly long
+# moves. The ranges must still contain the SRDF named poses, home and observe.
+joint_limits:
+  shoulder_pan_joint:
+    has_acceleration_limits: false
+    has_effort_limits: true
+    has_position_limits: true
+    has_velocity_limits: true
+    max_effort: 150.0
+    max_position: !degrees  180.0
+    max_velocity: !degrees  180.0
+    min_position: !degrees -180.0
+  shoulder_lift_joint:
+    has_acceleration_limits: false
+    has_effort_limits: true
+    has_position_limits: true
+    has_velocity_limits: true
+    max_effort: 150.0
+    max_position: !degrees    0.0
+    max_velocity: !degrees  180.0
+    min_position: !degrees -180.0
+  elbow_joint:
+    has_acceleration_limits: false
+    has_effort_limits: true
+    has_position_limits: true
+    has_velocity_limits: true
+    max_effort: 150.0
+    max_position: !degrees  180.0
+    max_velocity: !degrees  180.0
+    min_position: !degrees    0.0
+  wrist_1_joint:
+    has_acceleration_limits: false
+    has_effort_limits: true
+    has_position_limits: true
+    has_velocity_limits: true
+    max_effort: 28.0
+    max_position: !degrees   90.0
+    max_velocity: !degrees  180.0
+    min_position: !degrees -270.0
+  wrist_2_joint:
+    has_acceleration_limits: false
+    has_effort_limits: true
+    has_position_limits: true
+    has_velocity_limits: true
+    max_effort: 28.0
+    max_position: !degrees    0.0
+    max_velocity: !degrees  180.0
+    min_position: !degrees -180.0
+  wrist_3_joint:
+    has_acceleration_limits: false
+    has_effort_limits: true
+    has_position_limits: true
+    has_velocity_limits: true
+    max_effort: 28.0
+    max_position: !degrees  180.0
+    max_velocity: !degrees  180.0
+    min_position: !degrees -180.0

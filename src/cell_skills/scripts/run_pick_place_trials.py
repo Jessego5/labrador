@@ -4,9 +4,10 @@ It is the test the part 3 milestone was accepted with, and it repeats the same p
 Each trial puts the object back at its start pose, sends the arm home, picks the object and
 places it, then scores the placement against the simulator's ground truth, the xy error from
 the target centre and whether the object's bottom came to rest on the pocket floor. The object
-pose handed to Pick comes from ground truth too, since the skills are given ground-truth poses
-for now. The part 3 run of ten trials gave 10/10 at about 1.3 mm placement error. Run it with
-ros2 run cell_skills run_pick_place_trials.py --object cyl_blue_0 --target tray_1/A1 -n 10.
+pose handed to Pick comes from ground truth too, which was a stand-in until perception arrived
+in part 4; the scoring uses ground truth either way. The part 3 run of ten trials gave 10/10 at
+about 1.3 mm placement error. Run it with ros2 run cell_skills run_pick_place_trials.py
+--object cyl_blue_0 --target tray_1/A1 -n 10.
 """
 import argparse
 import math

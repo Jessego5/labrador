@@ -6,8 +6,8 @@
   the joint names must match mjcf/ur5e_2f85.xml, because the MuJoCo actuators are named after
   their joints. The world frame is the table frame, with the robot base at the origin on the
   table top. The arm takes its link lengths from config/ur5e_mujoco_kinematics.yaml, Menagerie's
-  rather than UR's calibration, so URDF and MJCF forward kinematics agree exactly;
-  scripts/check_fk.py checks the agreement.
+  rather than UR's calibration, so URDF and MJCF forward kinematics agree exactly, and its joint
+  ranges from config/ur5e_joint_limits.yaml; scripts/check_fk.py checks the agreement.
 -->
 <robot name="cell" xmlns:xacro="http://www.ros.org/wiki/xacro">
   <xacro:arg name="headless" default="false"/>
@@ -41,7 +41,7 @@
     name="ur"
     tf_prefix=""
     parent="table"
-    joint_limits_parameters_file="$(find ur_description)/config/ur5e/joint_limits.yaml"
+    joint_limits_parameters_file="$(find cell_description)/config/ur5e_joint_limits.yaml"
     kinematics_parameters_file="$(find cell_description)/config/ur5e_mujoco_kinematics.yaml"
     physical_parameters_file="$(find ur_description)/config/ur5e/physical_parameters.yaml"
     visual_parameters_file="$(find ur_description)/config/ur5e/visual_parameters.yaml">
@@ -60,6 +60,16 @@
     <parent link="tool0"/>
     <child link="tcp"/>
     <origin xyz="0 0 ${tcp_z}" rpy="0 0 ${-pi/2}"/>
+  </joint>
+
+  <!-- The overhead camera's optical frame (x right, y down, z forward), the same as the MJCF
+       camera "overhead" at (0.45, 0, 1.0) looking straight down. scripts/check_fk.py checks
+       that the two agree. -->
+  <link name="overhead_camera_optical_frame"/>
+  <joint name="table_to_overhead_camera" type="fixed">
+    <parent link="table"/>
+    <child link="overhead_camera_optical_frame"/>
+    <origin xyz="0.45 0 1.0" rpy="${pi} 0 ${-pi/2}"/>
   </joint>
 
   <xacro:macro name="arm_joint" params="name initial">
