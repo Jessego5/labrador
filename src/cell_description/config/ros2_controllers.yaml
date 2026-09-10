@@ -1,7 +1,7 @@
 # This is the ros2_control controller configuration for the cell, loaded by the one
 # ros2_control_node that runs the MuJoCo hardware interface. joint_trajectory_controller moves
-# the arm along MoveIt's plans and gripper_controller drives the 2F-85 through its one driver
-# joint. Only one controller_manager may run
+# the arm along MoveIt's plans, gripper_controller drives the 2F-85 through its one driver joint,
+# and compliance_controller takes over the arm for contact. Only one controller_manager may run
 # at a time: a stale robot_state_publisher's /robot_description gets picked up by a new
 # ros2_control_node.
 
@@ -43,8 +43,10 @@ joint_trajectory_controller:
 
 # The 2F-85 is commanded on robotiq_85_left_knuckle_joint in radians, 0 open and 0.8 closed.
 # Closing on an object ends in a stall rather than at the goal, so the stall check decides when a
-# grasp is done. In sim stall_velocity_threshold had to be about 0.02, or close-on-object goals
-# never finished.
+# grasp is done. In part 3 stall_velocity_threshold had to be about 0.02, or close-on-object goals
+# never finished. It was raised to 0.1 in part 5, when the gripper was made stronger for insertion,
+# and commandGripper in the skills also treats a position settled for 0.3 s as a grasp, because
+# the thin peg's contact chatter defeats this stall check.
 gripper_controller:
   ros__parameters:
     type: parallel_gripper_action_controller/GripperActionController
@@ -55,4 +57,64 @@ gripper_controller:
     goal_tolerance: 0.02
     allow_stalling: true
     stall_timeout: 0.3
-    stall_velocity_threshold: 0.02  # rad/s; the simulated linkage jitters above 0.002 when gripping
+    stall_velocity_threshold: 0.1  # rad/s; holding, the damped linkage jitters up to ~0.08; closing is ~0.4
+
+# the raw wrist force-torque reading (what the gripper exerts on the wrist, in tool0), for RViz
+# and logging
+ft_broadcaster:
+  ros__parameters:
+    type: force_torque_sensor_broadcaster/ForceTorqueSensorBroadcaster
+    sensor_name: wrist_ft_fts
+    frame_id: tool0
+
+# The Cartesian admittance controller from cell_controllers. It is spawned inactive, and the
+# skills switch it in, in place of joint_trajectory_controller, for the last centimetres of
+# placing and for insertion. It outputs position offsets rather than torques, because the sim
+# rejects effort commands on position actuators.
+compliance_controller:
+  ros__parameters:
+    type: cell_controllers/CartesianComplianceController
+    joints:
+      - shoulder_pan_joint
+      - shoulder_lift_joint
+      - elbow_joint
+      - wrist_1_joint
+      - wrist_2_joint
+      - wrist_3_joint
+    base_frame: world
+    tip_frame: tcp
+    sensor_frame: tool0
+    ft_sensor: wrist_ft_fts
+    # The virtual dynamics per axis [x y z rx ry rz], in the base frame. Laterally it is stiff
+    # enough to drag a pressed peg through a search pattern (friction of about 3 N gives 1.5 mm
+    # of lag) yet compliant to the hole walls; axially it is soft so contact forces stay small;
+    # and in rotation it is fairly stiff, so a peg resting half over the hole rim does not tilt
+    # into it.
+    stiffness: [2000.0, 2000.0, 400.0, 100.0, 100.0, 100.0]   # N/m, N m/rad
+    mass: [5.0, 5.0, 5.0, 0.1, 0.1, 0.1]                  # kg, kg m^2
+    # The mass and damping are sized for contact. The admittance chattered between 0 and 22 N
+    # in contact until it had M = 5 kg, D = 400 and damping relative to the reference velocity;
+    # contact then held a steady 7 N. Against the stiff
+    # position-servoed arm (about 2e4 N/m at the TCP) this gives a damping ratio of about 0.6. In
+    # free space the motion is overdamped, which is harmless because the damping acts on the
+    # velocity relative to the (moving) reference.
+    damping: [400.0, 400.0, 400.0, 8.0, 8.0, 8.0]         # N s/m, N m s/rad
+    # safety limits
+    max_force: 40.0             # N, the external force the admittance uses is clamped to this
+    max_torque: 4.0             # N m
+    max_linear_velocity: 0.05   # m/s of the compliant frame
+    max_angular_velocity: 0.3   # rad/s
+    max_joint_velocity: 0.8     # rad/s per joint
+    workspace_min: [0.15, -0.55, 0.015]   # TCP position bounds (m)
+    workspace_max: [0.85, 0.55, 0.60]
+    # signal conditioning
+    force_deadband: 0.3         # N
+    torque_deadband: 0.03       # N m
+    filter_cutoff_hz: 30.0
+    tare_samples: 50            # cycles averaged to zero the sensor on activation
+    # reference following
+    reference_linear_velocity: 0.05   # m/s
+    reference_angular_velocity: 0.3   # rad/s
+    ik_iterations: 2
+    ik_damping: 0.02
+    publish_decimation: 2       # publish state every 2nd cycle (125 Hz)

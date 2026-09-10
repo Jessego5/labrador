@@ -106,5 +106,20 @@
       <state_interface name="velocity"/>
       <state_interface name="effort"/>
     </joint>
+    <!-- The wrist force-torque sensor, at the MJCF site ft_frame (the same place as tool0) with
+         the sensors wrist_ft_force and wrist_ft_torque. It reports what the gripper exerts on
+         the wrist, in tool0: mujoco_ros2_control negates MuJoCo's reading, so the value is what
+         the tool applies at the sensor, its weight plus any external force. -->
+    <sensor name="wrist_ft_fts">
+      <param name="mujoco_type">fts</param>
+      <param name="mujoco_sensor_name">wrist_ft</param>
+      <param name="frame_id">tool0</param>
+      <state_interface name="force.x"/>
+      <state_interface name="force.y"/>
+      <state_interface name="force.z"/>
+      <state_interface name="torque.x"/>
+      <state_interface name="torque.y"/>
+      <state_interface name="torque.z"/>
+    </sensor>
   </ros2_control>
 </robot>

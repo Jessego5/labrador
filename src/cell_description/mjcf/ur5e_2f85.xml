@@ -71,34 +71,34 @@
     <material name="robotiq_silicone" rgba="0.1882 0.1882 0.1882 1"/>
     <material name="robotiq_gray" rgba="0.4627 0.4627 0.4627 1"/>
     <material name="robotiq_black" rgba="0.149 0.149 0.149 1"/>
-    <mesh name="base_0" content_type="model/obj" file="ur5e/base_0.obj"/>
-    <mesh name="base_1" content_type="model/obj" file="ur5e/base_1.obj"/>
-    <mesh name="shoulder_0" content_type="model/obj" file="ur5e/shoulder_0.obj"/>
-    <mesh name="shoulder_1" content_type="model/obj" file="ur5e/shoulder_1.obj"/>
-    <mesh name="shoulder_2" content_type="model/obj" file="ur5e/shoulder_2.obj"/>
-    <mesh name="upperarm_0" content_type="model/obj" file="ur5e/upperarm_0.obj"/>
-    <mesh name="upperarm_1" content_type="model/obj" file="ur5e/upperarm_1.obj"/>
-    <mesh name="upperarm_2" content_type="model/obj" file="ur5e/upperarm_2.obj"/>
-    <mesh name="upperarm_3" content_type="model/obj" file="ur5e/upperarm_3.obj"/>
-    <mesh name="forearm_0" content_type="model/obj" file="ur5e/forearm_0.obj"/>
-    <mesh name="forearm_1" content_type="model/obj" file="ur5e/forearm_1.obj"/>
-    <mesh name="forearm_2" content_type="model/obj" file="ur5e/forearm_2.obj"/>
-    <mesh name="forearm_3" content_type="model/obj" file="ur5e/forearm_3.obj"/>
-    <mesh name="wrist1_0" content_type="model/obj" file="ur5e/wrist1_0.obj"/>
-    <mesh name="wrist1_1" content_type="model/obj" file="ur5e/wrist1_1.obj"/>
-    <mesh name="wrist1_2" content_type="model/obj" file="ur5e/wrist1_2.obj"/>
-    <mesh name="wrist2_0" content_type="model/obj" file="ur5e/wrist2_0.obj"/>
-    <mesh name="wrist2_1" content_type="model/obj" file="ur5e/wrist2_1.obj"/>
-    <mesh name="wrist2_2" content_type="model/obj" file="ur5e/wrist2_2.obj"/>
-    <mesh name="wrist3" content_type="model/obj" file="ur5e/wrist3.obj"/>
-    <mesh name="robotiq_base_mount" class="robotiq_2f85" content_type="model/stl" file="robotiq_2f85/base_mount.stl"/>
-    <mesh name="robotiq_base" class="robotiq_2f85" content_type="model/stl" file="robotiq_2f85/base.stl"/>
-    <mesh name="robotiq_driver" class="robotiq_2f85" content_type="model/stl" file="robotiq_2f85/driver.stl"/>
-    <mesh name="robotiq_coupler" class="robotiq_2f85" content_type="model/stl" file="robotiq_2f85/coupler.stl"/>
-    <mesh name="robotiq_follower" class="robotiq_2f85" content_type="model/stl" file="robotiq_2f85/follower.stl"/>
-    <mesh name="robotiq_pad" class="robotiq_2f85" content_type="model/stl" file="robotiq_2f85/pad.stl"/>
-    <mesh name="robotiq_silicone_pad" class="robotiq_2f85" content_type="model/stl" file="robotiq_2f85/silicone_pad.stl"/>
-    <mesh name="robotiq_spring_link" class="robotiq_2f85" content_type="model/stl" file="robotiq_2f85/spring_link.stl"/>
+    <mesh name="base_0" file="ur5e/base_0.obj"/>
+    <mesh name="base_1" file="ur5e/base_1.obj"/>
+    <mesh name="shoulder_0" file="ur5e/shoulder_0.obj"/>
+    <mesh name="shoulder_1" file="ur5e/shoulder_1.obj"/>
+    <mesh name="shoulder_2" file="ur5e/shoulder_2.obj"/>
+    <mesh name="upperarm_0" file="ur5e/upperarm_0.obj"/>
+    <mesh name="upperarm_1" file="ur5e/upperarm_1.obj"/>
+    <mesh name="upperarm_2" file="ur5e/upperarm_2.obj"/>
+    <mesh name="upperarm_3" file="ur5e/upperarm_3.obj"/>
+    <mesh name="forearm_0" file="ur5e/forearm_0.obj"/>
+    <mesh name="forearm_1" file="ur5e/forearm_1.obj"/>
+    <mesh name="forearm_2" file="ur5e/forearm_2.obj"/>
+    <mesh name="forearm_3" file="ur5e/forearm_3.obj"/>
+    <mesh name="wrist1_0" file="ur5e/wrist1_0.obj"/>
+    <mesh name="wrist1_1" file="ur5e/wrist1_1.obj"/>
+    <mesh name="wrist1_2" file="ur5e/wrist1_2.obj"/>
+    <mesh name="wrist2_0" file="ur5e/wrist2_0.obj"/>
+    <mesh name="wrist2_1" file="ur5e/wrist2_1.obj"/>
+    <mesh name="wrist2_2" file="ur5e/wrist2_2.obj"/>
+    <mesh name="wrist3" file="ur5e/wrist3.obj"/>
+    <mesh name="robotiq_base_mount" class="robotiq_2f85" file="robotiq_2f85/base_mount.stl"/>
+    <mesh name="robotiq_base" class="robotiq_2f85" file="robotiq_2f85/base.stl"/>
+    <mesh name="robotiq_driver" class="robotiq_2f85" file="robotiq_2f85/driver.stl"/>
+    <mesh name="robotiq_coupler" class="robotiq_2f85" file="robotiq_2f85/coupler.stl"/>
+    <mesh name="robotiq_follower" class="robotiq_2f85" file="robotiq_2f85/follower.stl"/>
+    <mesh name="robotiq_pad" class="robotiq_2f85" file="robotiq_2f85/pad.stl"/>
+    <mesh name="robotiq_silicone_pad" class="robotiq_2f85" file="robotiq_2f85/silicone_pad.stl"/>
+    <mesh name="robotiq_spring_link" class="robotiq_2f85" file="robotiq_2f85/spring_link.stl"/>
   </asset>
 
   <worldbody>
@@ -155,6 +155,7 @@
                   <body name="robotiq_base_mount" childclass="robotiq_2f85" pos="0 0.107 0" quat="-0.707107 0.707107 0 0" gravcomp="1">
                     <geom class="robotiq_visual" material="robotiq_black" mesh="robotiq_base_mount"/>
                     <geom class="robotiq_collision" mesh="robotiq_base_mount"/>
+                    <site name="ft_frame" quat="1 0 0 0" size="0.006" group="4" pos="0 0 -0.007" rgba="1 0.5 0 1"/>
                     <body name="robotiq_base" pos="0 0 0.0038" quat="0.707107 0 0 -0.707107" gravcomp="1">
                       <inertial pos="0 -2.70394e-05 0.0354675" quat="0.999999 -0.00152849 0 0" mass="0.777441" diaginertia="0.000260285 0.000225381 0.000152708"/>
                       <geom class="robotiq_visual" material="robotiq_black" mesh="robotiq_base"/>
@@ -266,6 +267,11 @@
     <general name="wrist_1_joint" class="size1" joint="wrist_1_joint"/>
     <general name="wrist_2_joint" class="size1" joint="wrist_2_joint"/>
     <general name="wrist_3_joint" class="size1" joint="wrist_3_joint"/>
-    <general name="robotiq_85_left_knuckle_joint" tendon="robotiq_split" ctrlrange="0 0.8" forcerange="-5 5" biastype="affine" gainprm="100" biasprm="0 -100 -10"/>
+    <general name="robotiq_85_left_knuckle_joint" tendon="robotiq_split" ctrlrange="0 0.8" forcerange="-15 15" biastype="affine" gainprm="100" biasprm="0 -100 -40"/>
   </actuator>
+
+  <sensor>
+    <force site="ft_frame" name="wrist_ft_force"/>
+    <torque site="ft_frame" name="wrist_ft_torque"/>
+  </sensor>
 </mujoco>

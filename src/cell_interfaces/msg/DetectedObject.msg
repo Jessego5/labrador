@@ -1,5 +1,5 @@
 # This is one object found by perception, as the detector in cell_perception reports it and the
-# DetectObjects skill passes it on to its caller. The pose is the centre of the bounding box of
+# DetectObjects skill returns it. The pose is the centre of the bounding box of
 # the object type the measurement matched, so a pick can be planned from it directly.
 string id                          # unique within one detection, e.g. "blue_cylinder_2"
 string type                        # object type from cell_description/config/objects.yaml

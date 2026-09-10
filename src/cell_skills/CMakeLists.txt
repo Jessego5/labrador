@@ -1,7 +1,8 @@
-# This builds the cell's skills: a ROS-free library with the grasp geometry, the skill server as
-# a component, and the standalone skill_server executable that cell.launch.py runs. The geometry
-# is kept in its own library so its gtests build and run without MoveIt or a running robot. It
-# also installs run_pick_place_trials.py, the pick and place acceptance script.
+# This builds the cell's skills: a ROS-free library with the grasp geometry and the insertion
+# search helpers, the skill server as a component, and the standalone skill_server executable
+# that cell.launch.py runs. The geometry is kept in its own library so its gtests build and run
+# without MoveIt or a running robot. It also installs run_pick_place_trials.py, the pick and
+# place acceptance script.
 cmake_minimum_required(VERSION 3.16)
 project(cell_skills)
 
@@ -16,6 +17,7 @@ find_package(ament_index_cpp REQUIRED)
 find_package(cell_interfaces REQUIRED)
 find_package(cell_workspace REQUIRED)
 find_package(control_msgs REQUIRED)
+find_package(controller_manager_msgs REQUIRED)
 find_package(Eigen3 REQUIRED)
 find_package(geometry_msgs REQUIRED)
 find_package(moveit_msgs REQUIRED)
@@ -29,8 +31,8 @@ find_package(tf2_eigen REQUIRED)
 find_package(tf2_geometry_msgs REQUIRED)
 find_package(tf2_ros REQUIRED)
 
-# the ROS-free grasp geometry
-add_library(grasp_geometry SHARED src/grasp_geometry.cpp)
+# the ROS-free grasp geometry and insertion search helpers
+add_library(grasp_geometry SHARED src/grasp_geometry.cpp src/insertion.cpp)
 target_include_directories(grasp_geometry PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
   $<INSTALL_INTERFACE:include/${PROJECT_NAME}>)
@@ -51,6 +53,7 @@ target_link_libraries(skill_server_component
   tf2_ros::tf2_ros
   ${cell_interfaces_TARGETS}
   ${control_msgs_TARGETS}
+  ${controller_manager_msgs_TARGETS}
   ${geometry_msgs_TARGETS}
   ${moveit_msgs_TARGETS}
   ${sensor_msgs_TARGETS}
@@ -74,6 +77,8 @@ if(BUILD_TESTING)
   find_package(ament_cmake_gtest REQUIRED)
   ament_add_gtest(test_grasp_geometry test/test_grasp_geometry.cpp)
   target_link_libraries(test_grasp_geometry grasp_geometry)
+  ament_add_gtest(test_insertion test/test_insertion.cpp)
+  target_link_libraries(test_insertion grasp_geometry)
 endif()
 
 ament_export_targets(export_${PROJECT_NAME} HAS_LIBRARY_TARGET)

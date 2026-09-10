@@ -1,0 +1,33 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<!--
+  This is the package manifest for cell_controllers. It has no dependency on MuJoCo or on the rest
+  of the cell: the controller only needs ros2_control, KDL for the kinematics and the robot
+  description it is given, which is what lets it drive any position-controlled arm.
+-->
+<package format="3">
+  <name>cell_controllers</name>
+  <version>0.1.0</version>
+  <description>ros2_control Cartesian compliance (admittance) controller for position-controlled arms.</description>
+  <maintainer email="dev@example.com">cell developer</maintainer>
+  <license>Apache-2.0</license>
+
+  <buildtool_depend>ament_cmake</buildtool_depend>
+
+  <depend>controller_interface</depend>
+  <depend>eigen</depend>
+  <depend>geometry_msgs</depend>
+  <depend>hardware_interface</depend>
+  <depend>kdl_parser</depend>
+  <depend>orocos_kdl_vendor</depend>
+  <depend>pluginlib</depend>
+  <depend>rclcpp</depend>
+  <depend>rclcpp_lifecycle</depend>
+  <depend>realtime_tools</depend>
+
+  <test_depend>ament_cmake_gtest</test_depend>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>

@@ -40,9 +40,9 @@
       <freejoint name="cyl_blue_3"/>
       <geom class="object" type="cylinder" size="0.015 0.025" material="obj_blue_cylinder"/>
     </body>
-    <body name="peg_0" pos="0.25 0.05 0.03" quat="1 0 0 0">
+    <body name="peg_0" pos="0.25 0.05 0.035" quat="1 0 0 0">
       <freejoint name="peg_0"/>
-      <geom class="object" type="cylinder" size="0.01 0.03" material="obj_yellow_peg"/>
+      <geom class="object" type="cylinder" size="0.01 0.035" material="obj_yellow_peg"/>
     </body>
   </worldbody>
 </mujoco>

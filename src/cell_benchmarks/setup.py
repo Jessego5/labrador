@@ -1,8 +1,8 @@
 """
 This is the ament_python package definition for cell_benchmarks. It installs the scene
-randomiser and the acceptance runner, and registers run_perception_trials as a console script so
-it starts with ros2 run cell_benchmarks run_perception_trials. Build it with
-colcon build --packages-select cell_benchmarks.
+randomiser and the two acceptance runners, and registers run_perception_trials and
+run_insertion_trials as console scripts so each one starts with ros2 run cell_benchmarks
+<name>. Build it with colcon build --packages-select cell_benchmarks.
 """
 from setuptools import find_packages, setup
 
@@ -26,6 +26,7 @@ setup(
     entry_points={
         "console_scripts": [
             "run_perception_trials = cell_benchmarks.run_perception_trials:main",
+            "run_insertion_trials = cell_benchmarks.run_insertion_trials:main",
         ],
     },
 )

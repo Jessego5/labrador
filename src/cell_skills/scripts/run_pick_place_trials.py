@@ -5,9 +5,10 @@ Each trial puts the object back at its start pose, sends the arm home, picks the
 places it, then scores the placement against the simulator's ground truth, the xy error from
 the target centre and whether the object's bottom came to rest on the pocket floor. The object
 pose handed to Pick comes from ground truth too, which was a stand-in until perception arrived
-in part 4; the scoring uses ground truth either way. The part 3 run of ten trials gave 10/10 at
-about 1.3 mm placement error. Run it with ros2 run cell_skills run_pick_place_trials.py
---object cyl_blue_0 --target tray_1/A1 -n 10.
+in part 4, and the scoring keeps using ground truth after part 4 as well. The part 3 run of ten
+trials gave 10/10 at about 1.3 mm placement error. Run it with ros2 run cell_skills
+run_pick_place_trials.py --object cyl_blue_0 --target tray_1/A1 -n 10, and add --compliance to
+place with the compliance controller.
 """
 import argparse
 import math
@@ -102,6 +103,7 @@ def main():
     parser.add_argument("--object", default="cyl_blue_0")
     parser.add_argument("--target", default="tray_1/A1")
     parser.add_argument("-n", "--trials", type=int, default=10)
+    parser.add_argument("--compliance", action="store_true", help="place with the compliance controller")
     args = parser.parse_args()
 
     size = next((s for prefix, s in OBJECT_SIZES.items() if args.object.startswith(prefix)), None)
@@ -137,7 +139,7 @@ def main():
             if not picked:
                 raise RuntimeError(f"pick: {pick.message}")
 
-            place = node.action(node.place, Place.Goal(target_name=args.target))
+            place = node.action(node.place, Place.Goal(target_name=args.target, use_compliance=args.compliance))
             placed = place.success
             if not placed:
                 raise RuntimeError(f"place: {place.message}")

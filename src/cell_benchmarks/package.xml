@@ -1,9 +1,9 @@
 <?xml version="1.0"?>
 <?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
 <!-- This is the package manifest for cell_benchmarks, the Python package that lays out seeded
-     random scenes and runs the perception acceptance trials against a running cell. It needs
-     cell_description for objects.yaml and workspace.yaml, cell_interfaces for the skill
-     actions, and mujoco_ros2_control_msgs to read
+     random scenes and runs the perception and insertion acceptance trials against a running
+     cell. It needs cell_description for objects.yaml and workspace.yaml, cell_interfaces for
+     the skill actions, and mujoco_ros2_control_msgs to read
      ground truth and move objects in the simulator. -->
 <package format="3">
   <name>cell_benchmarks</name>

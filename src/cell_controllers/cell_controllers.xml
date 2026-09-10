@@ -1,0 +1,15 @@
+<!--
+  This is the pluginlib manifest that tells controller_manager the controller in the
+  cartesian_compliance_controller library exists, so ros2_controllers.yaml can name it by its
+  type, cell_controllers/CartesianComplianceController.
+-->
+<library path="cartesian_compliance_controller">
+  <class name="cell_controllers/CartesianComplianceController"
+         type="cell_controllers::CartesianComplianceController"
+         base_class_type="controller_interface::ControllerInterface">
+    <description>
+      Cartesian admittance controller: wrist force-torque sensor + virtual mass-spring-damper
+      around a reference TCP pose, commanding joint positions through damped least-squares IK.
+    </description>
+  </class>
+</library>

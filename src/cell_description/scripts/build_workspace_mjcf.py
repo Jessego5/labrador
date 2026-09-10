@@ -7,7 +7,8 @@ tray's frame is at slot A1's centre on the top surface, with rows along the tray
 columns along its +y, and the tray body sits on the table, `origin z` tall, with square pockets
 `slot_depth` deep. A bin's `center` is the floor's top surface and its `size` the outer x, y and
 wall height. A fixture's `hole_pose` is the centre of the hole opening; the hole is square with
-a side equal to the diameter. It also writes a site for every workspace frame, directly under <worldbody> in
+a side equal to the diameter, and the block is a free body, so it can be displaced in
+simulation. It also writes a site for every workspace frame, directly under <worldbody> in
 world coordinates and named like its TF frame (tray_1_C4), and cell_workspace's
 test_mjcf_alignment compares those with the C++ model, so the two implementations check each
 other. The sites are in group 3, hidden by default; press 3 in the MuJoCo viewer to show them.
@@ -21,7 +22,8 @@ import yaml
 PKG = Path(__file__).resolve().parents[1]
 CONFIG = PKG / "config" / "workspace.yaml"
 OUT = PKG / "mjcf" / "workspace.xml"
-BIN_WALL = 0.005  # m, bin wall thickness
+BIN_WALL = 0.005  # m, the wall thickness of every bin
+FIXTURE_MASS = 20.0  # kg, heavy enough not to slide under insertion forces
 
 
 def fmt(*values):
@@ -138,8 +140,16 @@ def fixture(name, f):
         box(f"{name}_wall_yn", (0, -side, zc), (d / 2, wall, hz), "ws_fixture"),
         box(f"{name}_wall_yp", (0, side, zc), (d / 2, wall, hz), "ws_fixture"),
     ]
-    # the block stands on the table, so only the yaw of hole_pose applies to the geometry
+    # The block stands on the table, so only the yaw of hole_pose applies to the geometry. It
+    # is a free body, heavy enough not to slide under insertion forces, so the benchmarks can
+    # displace it from its nominal pose with set_free_joint_state while the robot keeps
+    # planning with the nominal pose from workspace.yaml; that is how the insertion search is
+    # tested against a fixture that is not where it should be.
+    m, s, h = FIXTURE_MASS, 2 * half_block, z
+    ixx, izz = m * (s * s + h * h) / 12, m * (2 * s * s) / 12
     body = [f'    <body name="{name}" pos="{fmt(x, y, 0)}" quat="{fmt(*yaw_quat(yaw))}">',
+            f'      <freejoint name="{name}"/>',
+            f'      <inertial pos="0 0 {fmt(h / 2)}" mass="{fmt(m)}" diaginertia="{fmt(ixx, ixx, izz)}"/>',
             *geoms, "    </body>"]
     return body, [site(name, (x, y, z), rpy_quat(roll, pitch, yaw))]
 

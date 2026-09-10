@@ -1,10 +1,10 @@
 """
 This brings up the simulated cell without any planning or skills: MuJoCo running inside
-mujoco_ros2_control's ros2_control_node, robot_state_publisher, the arm and gripper controllers,
-the workspace node with its TF frames, and RViz. cell.launch.py includes it and adds MoveIt, the
-skills and perception on top. Only one controller_manager may run at a time, since a new
-ros2_control_node will pick up a stale robot_state_publisher's /robot_description, so stop any
-earlier bring-up before starting this one. Run it with
+mujoco_ros2_control's ros2_control_node, robot_state_publisher, the arm, gripper and wrist F/T
+controllers, the workspace node with its TF frames, and RViz. cell.launch.py includes it and adds
+MoveIt, the skills and perception on top. Only one controller_manager may run at a time, since a
+new ros2_control_node will pick up a stale robot_state_publisher's /robot_description, so stop
+any earlier bring-up before starting this one. Run it with
 ros2 launch cell_bringup sim.launch.py for the MuJoCo viewer and RViz, or with
 ros2 launch cell_bringup sim.launch.py headless:=true rviz:=false for neither.
 """
@@ -59,21 +59,24 @@ def generate_launch_description():
         on_exit=Shutdown(),
     )
 
-    def spawner(name):
+    def spawner(name, *extra):
         """A controller_manager spawner for one controller from ros2_controllers.yaml."""
         return Node(
             package="controller_manager",
             executable="spawner",
-            arguments=[name, "--param-file", controllers_file],
+            arguments=[name, "--param-file", controllers_file, *extra],
             output="both",
         )
 
     joint_state_broadcaster = spawner("joint_state_broadcaster")
-    # start the arm and gripper controllers once joint states are flowing
+    # start the arm, gripper and F/T controllers once joint states are flowing
     arm_and_gripper = RegisterEventHandler(
         OnProcessExit(
             target_action=joint_state_broadcaster,
-            on_exit=[spawner("joint_trajectory_controller"), spawner("gripper_controller")],
+            on_exit=[spawner("joint_trajectory_controller"), spawner("gripper_controller"),
+                     spawner("ft_broadcaster"),
+                     # loaded and configured but inactive, the skills switch it in when needed
+                     spawner("compliance_controller", "--inactive")],
         )
     )
 

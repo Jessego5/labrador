@@ -1,0 +1,27 @@
+# This is the Insert skill, which puts the held object (a peg) into a fixture hole using the
+# compliance controller. The robot aligns above the hole and descends until contact. Contact near
+# the expected height is the fixture's top face, so it doubles as a touch-off that tells how far
+# the peg reaches below the TCP. If the peg landed beside the hole, the skill runs a peck search
+# around the expected position, lifting off, moving and pressing down again at each probe; a
+# dragging spiral search was tried first and failed, because the held peg pivots between the pads
+# and lagged the gripper by up to 6 mm. Once the peg is in, it pushes until the insertion depth is
+# reached. On a jam it backs off and searches again, up to max_attempts.
+string target_name                      # workspace fixture, e.g. "peg_fixture"
+geometry_msgs/PoseStamped target_pose   # used when target_name is empty: centre of the hole
+                                        # opening, z along the hole axis (up)
+float64 insert_depth                    # m, required with target_pose (else from the workspace)
+float32 max_force                       # N, push force that counts as jammed (0 = default)
+uint8 max_attempts                      # search and insert attempts (0 = default)
+---
+bool success
+cell_interfaces/SkillError error
+string message
+float32 depth_reached                   # m below the hole opening (peg bottom)
+uint8 attempts
+geometry_msgs/Vector3 hole_offset       # where the hole was found relative to the target (m)
+float32 max_force_seen                  # N
+---
+string phase                            # approach, contact, search, insert, release, retreat
+float32 progress
+float32 depth                           # m, current peg depth below the hole opening
+float32 force                           # N, current axial contact force

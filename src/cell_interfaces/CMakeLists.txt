@@ -16,6 +16,7 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "srv/DetectObjects.srv"
   "srv/ResolveTarget.srv"
   "action/DetectObjects.action"
+  "action/Insert.action"
   "action/MoveToNamedPose.action"
   "action/Pick.action"
   "action/Place.action"

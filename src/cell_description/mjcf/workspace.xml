@@ -36,6 +36,8 @@
       <geom name="bin_b_wall_yp" type="box" pos="0 0.0575 0.04" size="0.075 0.0025 0.04" material="ws_bin"/>
     </body>
     <body name="peg_fixture" pos="0.66 0.05 0" quat="1 0 0 0">
+      <freejoint name="peg_fixture"/>
+      <inertial pos="0 0 0.025" mass="20" diaginertia="0.014833 0.014833 0.021333"/>
       <geom name="peg_fixture_base" type="box" pos="0 0 0.01" size="0.04 0.04 0.01" material="ws_fixture"/>
       <geom name="peg_fixture_wall_xn" type="box" pos="-0.0255 0 0.035" size="0.0145 0.04 0.015" material="ws_fixture"/>
       <geom name="peg_fixture_wall_xp" type="box" pos="0.0255 0 0.035" size="0.0145 0.04 0.015" material="ws_fixture"/>

@@ -2,8 +2,7 @@
 # scripts/build_objects_mjcf.py turns it into mjcf/objects.xml, the MuJoCo bodies at their
 # default poses; cell_perception takes `types` as the list of what the detector can recognise,
 # by colour, shape and size; and cell_benchmarks takes the instance names, the sizes and the
-# randomisation rules. Each type also has a `class`, because `shape` alone cannot tell the peg
-# from the blue cylinders. Regenerate the MJCF after editing, with
+# randomisation rules. Regenerate the MJCF after editing, with
 # python3 scripts/build_objects_mjcf.py.
 
 # object types; size is the bounding box [x, y, z] in m, [diameter, diameter, height] for
@@ -12,7 +11,7 @@ types:
   red_cube:      {class: cube,     shape: box,      color: red,    size: [0.040, 0.040, 0.040], rgba: [0.85, 0.10, 0.10, 1]}
   green_cube:    {class: cube,     shape: box,      color: green,  size: [0.040, 0.040, 0.040], rgba: [0.10, 0.70, 0.20, 1]}
   blue_cylinder: {class: cylinder, shape: cylinder, color: blue,   size: [0.030, 0.030, 0.050], rgba: [0.10, 0.30, 0.85, 1]}
-  yellow_peg:    {class: peg,      shape: cylinder, color: yellow, size: [0.020, 0.020, 0.060], rgba: [0.90, 0.80, 0.10, 1]}
+  yellow_peg:    {class: peg,      shape: cylinder, color: yellow, size: [0.020, 0.020, 0.070], rgba: [0.90, 0.80, 0.10, 1]}
 
 # instances and their default start poses [x, y, yaw] in the table frame, resting on the table
 objects:

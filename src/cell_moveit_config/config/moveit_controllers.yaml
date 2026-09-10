@@ -2,7 +2,8 @@
 # sim.launch.py spawns from cell_description/config/ros2_controllers.yaml:
 # joint_trajectory_controller for the six arm joints and gripper_controller, a
 # parallel_gripper_action_controller commanded on robotiq_85_left_knuckle_joint in radians
-# (0 open, 0.8 closed).
+# (0 open, 0.8 closed). The admittance controller is not listed; the skills switch it in
+# themselves.
 moveit_controller_manager: moveit_simple_controller_manager/MoveItSimpleControllerManager
 
 moveit_simple_controller_manager:

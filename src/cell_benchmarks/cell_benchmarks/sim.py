@@ -9,7 +9,7 @@ import math
 import time
 
 import rclpy
-from cell_interfaces.action import DetectObjects, MoveToNamedPose, Pick, Place
+from cell_interfaces.action import DetectObjects, Insert, MoveToNamedPose, Pick, Place
 from mujoco_ros2_control_msgs.msg import FreeJointState, FreeJointStateArray
 from mujoco_ros2_control_msgs.srv import SetFreeJointState
 from rclpy.action import ActionClient
@@ -37,6 +37,7 @@ class CellClient(Node):
             "detect": ActionClient(self, DetectObjects, "/skills/detect_objects"),
             "pick": ActionClient(self, Pick, "/skills/pick"),
             "place": ActionClient(self, Place, "/skills/place"),
+            "insert": ActionClient(self, Insert, "/skills/insert"),
         }
         self.set_free_joint = self.create_client(
             SetFreeJointState, "/mujoco_ros2_control_node/set_free_joint_state")
@@ -85,7 +86,7 @@ class CellClient(Node):
 
     def run(self, action, goal, timeout=120.0):
         """
-        The result of one skill action ("move", "detect", "pick" or "place"). Raises
+        The result of one skill action ("move", "detect", "pick", "place" or "insert"). Raises
         RuntimeError when the goal is rejected and TimeoutError when it does not finish.
         """
         handle = self.wait(self.actions[action].send_goal_async(goal), 10.0)
@@ -96,15 +97,21 @@ class CellClient(Node):
     def set_object_poses(self, poses, sizes, settle=0.5):
         """
         Teleport objects to {name: (x, y, yaw)}, each resting on the table (its centre half its
-        height up), then let the simulation settle. Raises RuntimeError when the simulator
-        refuses.
+        height up), then let the simulation settle.
+        """
+        self.set_free_joints(
+            {name: (x, y, sizes[name][2] / 2, yaw) for name, (x, y, yaw) in poses.items()}, settle)
+
+    def set_free_joints(self, poses, settle=0.5):
+        """
+        Teleport free joints to {free joint name: (x, y, z, yaw)} in the world frame, then let
+        the simulation settle. Raises RuntimeError when the simulator refuses.
         """
         states = []
-        for name, (x, y, yaw) in poses.items():
+        for name, (x, y, z, yaw) in poses.items():
             s = FreeJointState(name=name)
             s.pose.header.frame_id = "world"
-            s.pose.pose.position.x, s.pose.pose.position.y = x, y
-            s.pose.pose.position.z = sizes[name][2] / 2
+            s.pose.pose.position.x, s.pose.pose.position.y, s.pose.pose.position.z = x, y, z
             s.pose.pose.orientation.w = math.cos(yaw / 2)
             s.pose.pose.orientation.z = math.sin(yaw / 2)
             states.append(s)
