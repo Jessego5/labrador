@@ -1,0 +1,23 @@
+# This is the executor's action, /executor/execute_task, which runs one task file (YAML) through
+# the behavior-tree executor in cell_executor. The result counts what happened over the whole
+# run, and the feedback says where in the task the robot is right now.
+string task_file        # path, or a bare name ("sort_and_insert") looked up in cell_executor/tasks
+string task_yaml        # inline task YAML, used when task_file is empty
+---
+bool success
+string outcome          # succeeded, failed, safe_stopped, aborted, invalid
+string message
+uint32 steps_total      # top-level steps in the task
+uint32 steps_succeeded
+uint32 steps_skipped    # failed steps that the on_failure policy skipped
+uint32 skill_calls
+uint32 skill_failures
+float32 duration_s
+string run_dir          # where the run log (log.jsonl), the generated tree and the summary went
+---
+string state            # running, paused
+uint32 step             # 1-based top-level step
+string step_name
+string item             # current for_each object, if any
+string skill            # running skill node
+string phase            # that skill's latest feedback phase

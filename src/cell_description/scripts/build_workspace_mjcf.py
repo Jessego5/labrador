@@ -22,7 +22,7 @@ import yaml
 PKG = Path(__file__).resolve().parents[1]
 CONFIG = PKG / "config" / "workspace.yaml"
 OUT = PKG / "mjcf" / "workspace.xml"
-BIN_WALL = 0.005  # m, the wall thickness of every bin
+BIN_WALL = 0.005  # m, the same as Bin::wall in cell_workspace
 FIXTURE_MASS = 20.0  # kg, heavy enough not to slide under insertion forces
 
 

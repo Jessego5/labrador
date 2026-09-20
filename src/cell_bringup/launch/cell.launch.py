@@ -1,8 +1,9 @@
 """
 This brings up the whole cell: the simulation from sim.launch.py, MoveIt's move_group, the
-skill server and the perception node. It is what the benchmarks run against. Run it with
-ros2 launch cell_bringup cell.launch.py, or add headless:=true rviz:=false to run without the
-MuJoCo viewer and RViz.
+skill server, the perception node and the task executor. It is what the benchmarks and the task
+files run against. Run it with ros2 launch cell_bringup cell.launch.py, add headless:=true
+rviz:=false to run without the MuJoCo viewer and RViz, or add task:=sort_and_insert to have the
+executor run that task as soon as it starts.
 """
 import os
 
@@ -79,11 +80,22 @@ def generate_launch_description():
         parameters=[sim_time],
     )
 
+    executor = Node(
+        package="cell_executor",
+        executable="executor_node",
+        output="screen",
+        parameters=[{"task": LaunchConfiguration("task")}],
+    )
+
     return LaunchDescription([
         DeclareLaunchArgument("headless", default_value="false"),
         DeclareLaunchArgument("rviz", default_value="true"),
+        DeclareLaunchArgument(
+            "task", default_value="",
+            description="task file (name in cell_executor/tasks or a path) to run at startup"),
         sim,
         move_group,
         skills,
         perception,
+        executor,
     ])

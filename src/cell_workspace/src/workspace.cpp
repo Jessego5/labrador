@@ -131,6 +131,21 @@ Footprint Bin::footprint() const
   return Footprint{center.head<2>() - half, center.head<2>() + half};
 }
 
+Eigen::Isometry3d Bin::spotPose(int n) const
+{
+  if (n < 1 || n > spotCount()) {
+    throw std::out_of_range(
+            "bin '" + name + "' has drop spots 1.." + std::to_string(spotCount()) + " (got " +
+            std::to_string(n) + ")");
+  }
+  const int row = (n - 1) / spot_cols;
+  const int col = (n - 1) % spot_cols;
+  const Eigen::Vector2d inner = size.head<2>() - Eigen::Vector2d::Constant(2.0 * wall);
+  const Eigen::Vector2d offset(
+    ((row + 0.5) / spot_rows - 0.5) * inner.x(), ((col + 0.5) / spot_cols - 0.5) * inner.y());
+  return yawPose(center + Eigen::Vector3d(offset.x(), offset.y(), 0.0), 0.0);
+}
+
 Footprint Fixture::footprint() const
 {
   const Eigen::Vector2d half = Eigen::Vector2d::Constant(0.5 * block_size);
@@ -198,6 +213,12 @@ std::vector<std::string> Workspace::validate() const
     if (b.center.z() < 0.0) {
       error(where + ": floor (center z) must not be below the table");
     }
+    if (b.spot_rows < 1 || b.spot_cols < 1) {
+      error(where + ": spots must be at least [1, 1]");
+    }
+    if (b.wall <= 0.0 || 2.0 * b.wall >= b.size.head<2>().minCoeff()) {
+      error(where + ": wall thickness must be positive and less than half the bin size");
+    }
     footprints.emplace_back(where, b.footprint());
   }
 
@@ -234,6 +255,18 @@ Eigen::Isometry3d Workspace::resolve(const std::string & target) const
   for (const auto & t : trays) {
     if (t.name == base) {
       return slash == std::string::npos ? t.pose() : t.slotPose(target.substr(slash + 1));
+    }
+  }
+  if (slash != std::string::npos) {
+    if (const Bin * b = findBin(base)) {
+      const std::string spot = target.substr(slash + 1);
+      if (spot.empty() || spot.size() > 4 ||
+        spot.find_first_not_of("0123456789") != std::string::npos)
+      {
+        throw std::invalid_argument(
+                "bad drop spot '" + target + "': expected '" + base + "/<number>'");
+      }
+      return b->spotPose(std::stoi(spot));
     }
   }
   if (slash == std::string::npos) {
@@ -276,7 +309,17 @@ Eigen::Isometry3d Workspace::placePose(const std::string & target) const
       }
     }
   }
-  return resolve(target);  // bins: the floor centre; unknown names throw
+  return resolve(target);  // bins: the floor centre or a drop spot; unknown names throw
+}
+
+const Bin * Workspace::findBin(const std::string & name) const
+{
+  for (const auto & b : bins) {
+    if (b.name == name) {
+      return &b;
+    }
+  }
+  return nullptr;
 }
 
 std::vector<Workspace::NamedFrame> Workspace::allFrames() const

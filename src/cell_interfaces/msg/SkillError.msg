@@ -1,4 +1,4 @@
-# This is the error code every skill action returns, so a caller can tell one kind of failure
+# This is the error code every skill action returns, so the executor can tell one kind of failure
 # from another and decide what to do with it, and so a log line says more than "failed".
 uint8 SUCCESS=0
 uint8 PLAN_FAILED=1        # MoveIt found no plan, or the Cartesian path was incomplete

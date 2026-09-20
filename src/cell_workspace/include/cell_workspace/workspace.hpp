@@ -1,8 +1,8 @@
 // This is the model of the cell's fixed furniture, the trays with their named slots, the bins
 // and the insertion fixtures, and it is where every named target such as "tray_1/C4" turns into
 // a pose. It is plain C++ over Eigen and yaml-cpp with no ROS in it, so the slot arithmetic and
-// the config checks can be unit tested in milliseconds; the workspace node, the skills and the
-// MJCF alignment test all link against it. Every pose is in the workspace
+// the config checks can be unit tested in milliseconds; the workspace node, the skills, the
+// executor and the MJCF alignment test all link against it. Every pose is in the workspace
 // frame (`Workspace::frame`, normally "table", whose origin is the robot base on the table top).
 #pragma once
 
@@ -66,15 +66,28 @@ struct Tray
   Footprint footprint() const;
 };
 
-// an open-top bin
+// An open-top bin. Its floor can be split into a grid of drop spots, "bin_a/1" up to
+// "bin_a/<rows*cols>", numbered row-major with rows along the bin's x and columns along its y.
+// The spots exist because a bin is not a point: placing two cubes at the floor centre put the
+// second one on top of the first.
 struct Bin
 {
   std::string name;
   Eigen::Vector3d center = Eigen::Vector3d::Zero();  // centre of the floor's top surface
   Eigen::Vector3d size = Eigen::Vector3d::Zero();    // outer x, y and wall height
+  double wall = 0.005;                               // wall thickness, the same as the MJCF's
+  int spot_rows = 1;                                 // drop spots along x
+  int spot_cols = 1;                                 // drop spots along y
 
   Eigen::Isometry3d pose() const;
   Footprint footprint() const;
+
+  int spotCount() const {return spot_rows * spot_cols;}
+
+  // The centre of drop spot `n` (1-based) on the floor, which is the centre of the n-th cell of
+  // an even grid over the inner floor, inside the walls. Throws std::out_of_range outside
+  // 1..spotCount().
+  Eigen::Isometry3d spotPose(int n) const;
 };
 
 // a block with a square insertion hole
@@ -112,8 +125,9 @@ public:
   // layout of this cell put the peg fixture on top of tray_1's row D.
   std::vector<std::string> validate() const;
 
-  // The pose of "tray_1", "tray_1/C4", "bin_a" or "peg_fixture". Throws std::invalid_argument
-  // for an unknown name and std::out_of_range for a slot that is not there.
+  // The pose of "tray_1", "tray_1/C4", "bin_a", "bin_a/2" (a drop spot) or "peg_fixture".
+  // Throws std::invalid_argument for an unknown name and std::out_of_range for a slot or spot
+  // that is not there.
   Eigen::Isometry3d resolve(const std::string & target) const;
 
   // Where a placed object's bottom centre should end up, oriented like the target: the pocket
@@ -123,7 +137,11 @@ public:
   // or a bare tray name ("tray_1"), and std::out_of_range for a bad slot.
   Eigen::Isometry3d placePose(const std::string & target) const;
 
-  // every tray, slot, bin and fixture frame, for TF
+  // the bin called `name`, or nullptr when there is none
+  const Bin * findBin(const std::string & name) const;
+
+  // Every tray, slot, bin and fixture frame, for TF. Bin drop spots are left out: they are
+  // derived from the bin and have no MuJoCo site for the alignment test to check them against.
   std::vector<NamedFrame> allFrames() const;
 
   // the TF frame id for a target, with '/' replaced by '_' ("tray_1/C4" becomes "tray_1_C4")

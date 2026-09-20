@@ -1,8 +1,8 @@
 // This is the skill server, the node that offers the cell's skills as ROS 2 actions under
-// /skills/: MoveToNamedPose, DetectObjects, Pick, Place and Insert. The trial scripts and the
-// benchmark runners are its clients, and cell.launch.py starts it next to move_group. All five
-// live in one node so they share one MoveGroupInterface and the record of the held object that
-// Pick hands on to Place and Insert. Only one skill runs at a time, and a goal that arrives while
+// /skills/: MoveToNamedPose, DetectObjects, Pick, Place and Insert. The task executor and the
+// trial scripts are its clients, and cell.launch.py starts it next to move_group. All five live
+// in one node so they share one MoveGroupInterface and the record of the held object that Pick
+// hands on to Place and Insert. Only one skill runs at a time, and a goal that arrives while
 // another is running is rejected rather than queued. The contact phases, a compliant place and
 // an insertion, switch from the joint trajectory controller to the Cartesian compliance
 // controller and back again when they are done.
@@ -172,6 +172,7 @@ private:
   double grasp_closed_threshold_;
   double release_opening_;
   double release_min_opening_;
+  double compliant_release_lift_;  // m above contact to hold while opening (compliant place)
   double gripper_timeout_;
   std::string observe_pose_;
   double detect_timeout_;

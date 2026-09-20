@@ -1,0 +1,32 @@
+# This is the cell's reference task: the robot sorts the red cubes into bin_a, puts four blue
+# cylinders into tray row C, inserts the peg into the fixture and goes home. It is the task the
+# part 6 acceptance run (run_task_trials --seeds 0-9) executes. Run it with
+#
+#   ros2 launch cell_bringup cell.launch.py task:=sort_and_insert
+#   ros2 action send_goal /executor/execute_task cell_interfaces/action/ExecuteTask \
+#     "{task_file: sort_and_insert}"
+#
+# The format is described in cell_executor/README.md. Objects come from the detect step; `$item`
+# is the current for_each object and `$index` its 1-based number. bin_a has two drop spots,
+# which the executor fills in turn, because two cubes placed at the bin centre landed on each
+# other. The cylinder loop filters on `class: cylinder` rather than on the shape, because the
+# peg's shape is a cylinder too.
+name: sort_and_insert
+description: Red cubes to bin_a, four cylinders to tray_1 C1..C4, peg into the fixture.
+on_failure: safe_stop          # or: skip_step, abort
+steps:
+  - detect: {}
+  - for_each:
+      filter: {color: red}
+      do:
+        - pick: {object: $item}
+        - place: {target: bin_a}
+  - for_each:
+      filter: {class: cylinder}
+      max: 4
+      do:
+        - pick: {object: $item}
+        - place: {target: tray_1/C$index}   # C1..C4
+  - pick: {object: peg_0}
+  - insert: {target: peg_fixture, max_attempts: 3}
+  - move_to: {pose: home}

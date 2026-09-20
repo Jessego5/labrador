@@ -1,0 +1,22 @@
+<?xml version="1.0"?>
+<!-- This is the SafeStop subtree, which the generated tree falls back to when a step fails under
+     `on_failure: safe_stop`. The robot puts down whatever the gripper holds in bin_b, the safe
+     drop zone, with position control, and then goes home. Each part is best effort, wrapped in
+     ForceSuccess so a failed put-down still sends the robot home, and the task still ends as
+     failed (safe_stopped). The executor loads every .xml file in trees/ except ones starting
+     with '.'. -->
+<root BTCPP_format="4">
+  <BehaviorTree ID="SafeStop">
+    <Sequence name="safe_stop">
+      <ForceSuccess>
+        <Sequence name="put_down_held_object">
+          <IsHolding/>
+          <Place target="bin_b" compliance="false"/>
+        </Sequence>
+      </ForceSuccess>
+      <ForceSuccess>
+        <MoveToNamedPose pose="home"/>
+      </ForceSuccess>
+    </Sequence>
+  </BehaviorTree>
+</root>

@@ -25,8 +25,8 @@ from mujoco_ros2_control_msgs.srv import SetFreeJointState
 from rclpy.action import ActionClient
 from rclpy.node import Node
 
-# bounding boxes (x, y, z) of the scene's objects by name prefix, see mjcf/scene.xml
-OBJECT_SIZES = {"cube": (0.04, 0.04, 0.04), "cyl": (0.03, 0.03, 0.05), "peg": (0.02, 0.02, 0.06)}
+# bounding boxes (x, y, z) of the scene's objects by name prefix, as in config/objects.yaml
+OBJECT_SIZES = {"cube": (0.04, 0.04, 0.04), "cyl": (0.03, 0.03, 0.05), "peg": (0.02, 0.02, 0.07)}
 POCKET_FLOOR_TOLERANCE = 0.003  # m, the object counts as seated when its bottom is this close
 
 

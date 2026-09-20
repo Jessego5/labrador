@@ -38,7 +38,7 @@ trays:
     slot_size: 0.034
     slot_depth: 0.015
 bins:
-  bin_a: {center: [0.30, 0.30, 0.02], size: [0.15, 0.12, 0.08]}
+  bin_a: {center: [0.30, 0.30, 0.02], size: [0.15, 0.12, 0.08], spots: [2, 1]}
 fixtures:
   peg_fixture:
     hole_pose: [0.66, 0.05, 0.05, 0, 0, 1.5707963267948966]
@@ -182,6 +182,29 @@ TEST(Resolve, UnknownNamesThrow)
   EXPECT_THROW(ws.resolve("bin_a/A1"), std::invalid_argument);
   EXPECT_THROW(ws.resolve("tray_1/Q9"), std::out_of_range);
   EXPECT_THROW(ws.resolve("tray_1/c4"), std::invalid_argument);
+}
+
+TEST(Resolve, BinDropSpotsSplitTheInnerFloor)
+{
+  const Workspace ws = loadWorkspaceString(kValidYaml);
+  const Bin & b = ws.bins[0];
+  EXPECT_EQ(b.spotCount(), 2);
+  // the inner floor x is 0.15 - 2 * 0.005 = 0.14, so the spot centres are at -/+ 0.035 along x
+  EXPECT_TRUE(ws.resolve("bin_a/1").translation().isApprox(Eigen::Vector3d(0.265, 0.30, 0.02), 1e-9));
+  EXPECT_TRUE(ws.resolve("bin_a/2").translation().isApprox(Eigen::Vector3d(0.335, 0.30, 0.02), 1e-9));
+  EXPECT_TRUE(ws.placePose("bin_a/2").isApprox(ws.resolve("bin_a/2"), kTol));
+  EXPECT_THROW(ws.resolve("bin_a/0"), std::out_of_range);
+  EXPECT_THROW(ws.resolve("bin_a/3"), std::out_of_range);
+  EXPECT_THROW(ws.resolve("bin_a/"), std::invalid_argument);
+  EXPECT_THROW(ws.resolve("bin_a/-1"), std::invalid_argument);
+
+  Bin grid = b;
+  grid.spot_rows = 2;
+  grid.spot_cols = 3;  // row-major: spot 5 = row 1, col 1 (centre column)
+  EXPECT_TRUE(grid.spotPose(5).translation().isApprox(Eigen::Vector3d(0.335, 0.30, 0.02), 1e-9));
+  EXPECT_NEAR(grid.spotPose(1).translation().y(), 0.30 - 0.11 / 3, 1e-9);
+  EXPECT_EQ(ws.findBin("bin_a"), &ws.bins[0]);
+  EXPECT_EQ(ws.findBin("tray_1"), nullptr);
 }
 
 TEST(Resolve, PlacePoseIsWhereTheObjectBottomRests)

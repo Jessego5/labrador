@@ -66,6 +66,7 @@ SkillServer::SkillServer(const rclcpp::NodeOptions & options)
   // 2F-85 is about 157 mm across the fingertips, and inside a bin its outer links hit the walls.
   release_opening_ = param("release_opening", 0.25);
   release_min_opening_ = param("release_min_opening", 0.1);
+  compliant_release_lift_ = param("compliant_release_lift", 0.001);
   gripper_timeout_ = param("gripper_timeout", 5.0);
   observe_pose_ = param<std::string>("observe_pose", "observe");
   detect_timeout_ = param("detect_timeout", 15.0);
@@ -197,7 +198,7 @@ void SkillServer::initialize()
   try {
     // Do not report ready until both controllers can take commands. At startup they are spawned
     // after move_group, and MoveIt fails executions sent before they exist. Until then every
-    // goal is answered with NOT_READY.
+    // goal is answered with NOT_READY, which the executor's SkillNode waits out and resends.
     const auto timeout = std::chrono::duration<double>(param("controller_wait_timeout", 120.0));
     auto arm_client = rclcpp_action::create_client<control_msgs::action::FollowJointTrajectory>(
       this, param<std::string>(
@@ -549,6 +550,21 @@ void SkillServer::executePlace(std::shared_ptr<rclcpp_action::ServerGoalHandle<P
         const ComplianceState s =
           compliantDescend(gh, hover, z_min, compliant_descend_speed_, contact_force_, 10.0);
         released_at = s.pose;
+        // Stop pressing before opening. The TCP backs off to just above the contact height, 1 mm
+        // by default, so the object rests on the surface under its own weight. Opening while
+        // still pushing it down jammed cubes between the opening fingers. The price is a little
+        // accuracy: the part 3 compliant placement error went from 0.03 to 0.18 mm.
+        //
+        // Bins are the hard case. A compliant release on a bin floor jammed: the cube stayed
+        // pinned under the adaptive 2F-85 pads, which dragged on it while opening (the gripper
+        // settled at about 0.36 rad instead of the free 0.31, and lifting met about 20 N), so the
+        // executor places into bins with position control.
+        Eigen::Isometry3d rest = s.pose;
+        rest.translation().z() += compliant_release_lift_;
+        sendComplianceTarget(rest);
+        for (int i = 0; i < 30; ++i) {
+          complianceTick(gh);
+        }
         feedback(gh, "release", 0.7f);
         opened = commandGripper(release_to);
         // lift off the object before switching back, since the fingers are still around it

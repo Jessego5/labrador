@@ -122,6 +122,17 @@ Workspace parse(const YAML::Node & root)
       b.name = name;
       b.center = vector<3>(require(n, "center", where), where + ".center");
       b.size = vector<3>(require(n, "size", where), where + ".size");
+      if (n["spots"]) {
+        const Eigen::Vector2d spots = vector<2>(n["spots"], where + ".spots");
+        b.spot_rows = static_cast<int>(spots.x());
+        b.spot_cols = static_cast<int>(spots.y());
+        if (b.spot_rows != spots.x() || b.spot_cols != spots.y()) {
+          throw std::runtime_error(where + ".spots: expected two integers");
+        }
+      }
+      if (n["wall"]) {
+        b.wall = number(n["wall"], where + ".wall");
+      }
       ws.bins.push_back(b);
     });
 

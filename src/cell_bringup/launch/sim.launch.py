@@ -2,9 +2,9 @@
 This brings up the simulated cell without any planning or skills: MuJoCo running inside
 mujoco_ros2_control's ros2_control_node, robot_state_publisher, the arm, gripper and wrist F/T
 controllers, the workspace node with its TF frames, and RViz. cell.launch.py includes it and adds
-MoveIt, the skills and perception on top. Only one controller_manager may run at a time, since a
-new ros2_control_node will pick up a stale robot_state_publisher's /robot_description, so stop
-any earlier bring-up before starting this one. Run it with
+MoveIt, the skills, perception and the executor on top. Only one controller_manager may run at a
+time, since a new ros2_control_node will pick up a stale robot_state_publisher's
+/robot_description, so stop any earlier bring-up before starting this one. Run it with
 ros2 launch cell_bringup sim.launch.py for the MuJoCo viewer and RViz, or with
 ros2 launch cell_bringup sim.launch.py headless:=true rviz:=false for neither.
 """

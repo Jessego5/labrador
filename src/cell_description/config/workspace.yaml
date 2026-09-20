@@ -18,9 +18,12 @@ trays:
 
 bins:
   # center is the centre of the bin floor's top surface and size the outer dimensions (x, y,
-  # wall height)
-  bin_a: {center: [0.30, 0.30, 0.02], size: [0.15, 0.12, 0.08]}
-  bin_b: {center: [0.50, 0.30, 0.02], size: [0.15, 0.12, 0.08]}
+  # wall height). spots is a [rows along x, cols along y] grid of drop spots on the inner floor,
+  # the targets "bin_a/1" to "bin_a/N" (row-major), so several objects can go into one bin side
+  # by side; two cubes placed at the bin centre landed on each other. Two spots along x leave
+  # about 35 mm beside each cube for the fingers, which close along table y here.
+  bin_a: {center: [0.30, 0.30, 0.02], size: [0.15, 0.12, 0.08], spots: [2, 1]}
+  bin_b: {center: [0.50, 0.30, 0.02], size: [0.15, 0.12, 0.08], spots: [2, 1]}
 
 fixtures:
   peg_fixture:

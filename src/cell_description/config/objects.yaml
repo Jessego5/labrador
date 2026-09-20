@@ -2,8 +2,9 @@
 # scripts/build_objects_mjcf.py turns it into mjcf/objects.xml, the MuJoCo bodies at their
 # default poses; cell_perception takes `types` as the list of what the detector can recognise,
 # by colour, shape and size; and cell_benchmarks takes the instance names, the sizes and the
-# randomisation rules. Regenerate the MJCF after editing, with
-# python3 scripts/build_objects_mjcf.py.
+# randomisation rules. Each type also has a `class`, which is what a task filters on, because
+# `shape` alone cannot tell the peg from the blue cylinders. Regenerate the MJCF after editing,
+# with python3 scripts/build_objects_mjcf.py.
 
 # object types; size is the bounding box [x, y, z] in m, [diameter, diameter, height] for
 # cylinders

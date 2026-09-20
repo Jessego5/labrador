@@ -1,6 +1,7 @@
 # This builds cell_interfaces, the messages, services and actions shared by every package in the
-# cell: the skill actions and the perception and workspace services. It holds definitions only,
-# no code, and both the C++ and the Python nodes build against it.
+# cell: the skill actions, the perception and workspace services, and the executor's
+# ExecuteTask. It holds definitions only, no code, and both the C++ and the Python nodes build
+# against it.
 cmake_minimum_required(VERSION 3.16)
 project(cell_interfaces)
 
@@ -16,6 +17,7 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "srv/DetectObjects.srv"
   "srv/ResolveTarget.srv"
   "action/DetectObjects.action"
+  "action/ExecuteTask.action"
   "action/Insert.action"
   "action/MoveToNamedPose.action"
   "action/Pick.action"
