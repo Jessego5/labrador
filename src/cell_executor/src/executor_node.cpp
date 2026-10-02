@@ -12,7 +12,9 @@
 // `ros2 launch cell_bringup cell.launch.py task:=sort_and_insert`. Every run writes
 // runs/task_<name>_<time>/ with the task, the generated tree, a JSON-lines log of every step and
 // skill call, a Groot2 .btlog and a summary.
+#include <algorithm>
 #include <atomic>
+#include <cctype>
 #include <cmath>
 #include <ctime>
 #include <filesystem>
@@ -71,7 +73,7 @@ public:
       1.0 / declare_parameter<double>("tick_rate_hz", 50.0));
     place_compliance_ = declare_parameter<bool>("place_compliance", true);
     for (const auto & entry : declare_parameter<std::vector<std::string>>(
-        "grasp_strategies", std::vector<std::string>{"peg:insert"}))
+        "grasp_strategies", std::vector<std::string>{"peg:insert", "vial:insert"}))
     {
       const auto colon = entry.find(':');
       if (colon == std::string::npos) {
@@ -108,6 +110,9 @@ public:
       this, "/skills/insert", clients_group_);
     skills_->move = rclcpp_action::create_client<cell_interfaces::action::MoveToNamedPose>(
       this, "/skills/move_to_named_pose", clients_group_);
+    // only the lab scene serves this; outside it a dispense step fails with a clear message
+    skills_->dispense = create_client<std_srvs::srv::Trigger>(
+      "/lab/dispense", rclcpp::ServicesQoS(), clients_group_);
 
     state_pub_ = create_publisher<std_msgs::msg::String>("~/state", rclcpp::QoS(10).reliable());
     state_timer_ = create_wall_timer(
@@ -242,8 +247,22 @@ private:
   {
     for (const auto & step : steps) {
       checkTargets(step.body);
+      checkTargets(step.else_body);
       const auto it = step.args.find("target");
       if (it == step.args.end() || !variablesIn(it->second).empty()) {
+        continue;
+      }
+      // a tray named on its own, or with a row letter, gets its next free slot when the place
+      // runs
+      const std::string base = it->second.substr(0, it->second.find('/'));
+      const std::string rest =
+        it->second.size() > base.size() ? it->second.substr(base.size() + 1) : "";
+      const bool tray = std::any_of(
+        workspace_.trays.begin(), workspace_.trays.end(),
+        [&](const auto & t) {
+          return t.name == base && (rest.empty() || (rest.size() == 1 && std::isupper(rest[0])));
+        });
+      if (tray) {
         continue;
       }
       try {
@@ -386,8 +405,13 @@ private:
     // 5. the outcome and the summary
     const double duration =
       std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count();
-    result.success = !aborted && status == BT::NodeStatus::SUCCESS;
-    result.outcome = aborted ? "aborted" : result.success ? "succeeded" :
+    // A tree that finished under skip_step after skipping something did not do the whole task.
+    // It used to be reported as succeeded, and in the lab benchmark that hid runs where a lost
+    // camera frame had skipped the watch and left every vial unsorted, so it is partial now.
+    const bool finished = !aborted && status == BT::NodeStatus::SUCCESS;
+    const bool skipped = ctx->steps_skipped > 0 || ctx->items_skipped > 0;
+    result.success = finished && !skipped;
+    result.outcome = aborted ? "aborted" : result.success ? "succeeded" : finished ? "partial" :
       ctx->safe_stopped ? "safe_stopped" : "failed";
     result.steps_succeeded = static_cast<uint32_t>(ctx->steps_succeeded);
     result.steps_skipped = static_cast<uint32_t>(ctx->steps_skipped);

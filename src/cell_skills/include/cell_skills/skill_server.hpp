@@ -136,7 +136,14 @@ private:
   // motion and gripper primitives, which throw SkillFailure
   void planAndExecute(const std::string & what);
   void moveToPose(const Eigen::Isometry3d & tcp_pose, const std::string & what);
-  bool solveIk(const geometry_msgs::msg::PoseStamped & target, std::map<std::string, double> & joints);
+  // a collision-free IK solution for `target`, seeded from the current joints or from `seed`
+  bool solveIk(
+    const geometry_msgs::msg::PoseStamped & target, std::map<std::string, double> & joints,
+    const std::map<std::string, double> & seed = {});
+  // moves to `above` on the IK branch of `below`, so that the straight line down between them
+  // stays on one branch
+  void moveAboveOnBranchOf(
+    const Eigen::Isometry3d & above, const Eigen::Isometry3d & below, const std::string & what);
   void moveToNamed(const std::string & name);
   void moveLinear(const Eigen::Isometry3d & tcp_pose, const std::string & what);
   double commandGripper(double position);

@@ -1,0 +1,29 @@
+# This is the lab's colour-change assay, run on the lab table (cell.launch.py scene:=lab). Every
+# vial in rack_in starts blue and reacts after its own reaction time: green means the reaction
+# worked and the vial goes to rack_done, brown means it failed and the vial goes to waste. The
+# robot cannot know when a vial will change or how it will end, so it watches: it looks every few
+# seconds and handles each vial as soon as it sees it change, looking again after every vial
+# because others may have changed meanwhile. A vial that cannot be picked or placed is skipped and
+# the watch carries on with the rest. Set the samples out first with /lab/reset (protocol assay),
+# which run_lab_trials does for each run, then run it with
+#   ros2 action send_goal /executor/execute_task cell_interfaces/action/ExecuteTask \
+#     "{task_file: color_assay}"
+name: color_assay
+description: Watch the assay vials and sort each one by its colour as soon as it changes.
+on_failure: skip_step
+steps:
+  - detect
+  - watch:
+      filter: {class: vial}
+      when: {color: [green, brown]}
+      period: 3
+      timeout: 300
+      do:
+        - pick: $item
+        - if:
+            color: green
+            then:
+              - place: rack_done
+            else:
+              - place: waste
+  - move_to: home

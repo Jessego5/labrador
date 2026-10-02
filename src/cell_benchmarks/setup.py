@@ -28,6 +28,7 @@ setup(
             "run_perception_trials = cell_benchmarks.run_perception_trials:main",
             "run_insertion_trials = cell_benchmarks.run_insertion_trials:main",
             "run_task_trials = cell_benchmarks.run_task_trials:main",
+            "run_lab_trials = cell_benchmarks.run_lab_trials:main",
         ],
     },
 )

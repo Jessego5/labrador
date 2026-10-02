@@ -6,6 +6,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cmath>
 #include <fstream>
 #include <set>
 #include <sstream>
@@ -30,17 +31,44 @@ struct Schema
 const std::map<std::string, Schema> & schemas()
 {
   static const std::map<std::string, Schema> kSchemas = {
-    {"detect", {{}, {"class", "color"}, ""}},
+    {"detect", {{}, {"class", "color", "frames"}, ""}},
     {"pick", {{"object"}, {"grasp"}, "object"}},
     {"place", {{"target"}, {"compliance"}, "target"}},
     {"insert", {{"target"}, {"max_force", "max_attempts"}, "target"}},
     {"move_to", {{"pose"}, {}, "pose"}},
+    {"dispense", {{}, {}, ""}},
+    {"wait", {{"seconds"}, {}, "seconds"}},
     {"for_each", {{"do"}, {"filter", "max"}, ""}},
+    {"watch", {{"do", "when"}, {"filter", "period", "timeout"}, ""}},
+    {"if", {{"then"}, {"color", "hue", "area", "else", "item"}, ""}},
+    {"repeat_until", {{"color", "do"}, {"max", "item", "on_max"}, ""}},
   };
   return kSchemas;
 }
 
 const std::set<std::string> kFilterFields = {"class", "color", "type"};
+// a condition can also test measurements: hue in degrees and a dish's colony area in mm^2
+const std::set<std::string> kNumericFields = {"hue", "area"};
+
+// "<92", ">=600": a comparison a numeric condition value must be
+bool isComparison(const std::string & v)
+{
+  std::size_t i = 0;
+  if (v.rfind("<=", 0) == 0 || v.rfind(">=", 0) == 0) {
+    i = 2;
+  } else if (!v.empty() && (v[0] == '<' || v[0] == '>')) {
+    i = 1;
+  } else {
+    return false;
+  }
+  try {
+    std::size_t used = 0;
+    std::stod(v.substr(i), &used);
+    return used == v.size() - i;
+  } catch (const std::exception &) {
+    return false;
+  }
+}
 const std::set<std::string> kLoopVariables = {"item", "index"};
 
 int lineOf(const YAML::Node & node)
@@ -107,6 +135,48 @@ ObjectFilter parseFilter(const YAML::Node & node, const std::string & what)
   return filter;
 }
 
+// the values of a condition field, written as one value or a list of them
+std::vector<std::string> values(const YAML::Node & node, const std::string & what)
+{
+  std::vector<std::string> out;
+  if (node.IsSequence()) {
+    for (const auto & v : node) {
+      out.push_back(scalar(v, what));
+    }
+  } else {
+    out.push_back(scalar(node, what));
+  }
+  if (out.empty()) {
+    fail(lineOf(node), what + ": expected at least one value");
+  }
+  return out;
+}
+
+ObjectCondition parseCondition(const YAML::Node & node, const std::string & what)
+{
+  if (!node.IsMap() || node.size() == 0) {
+    fail(lineOf(node), what + ": expected a mapping such as {color: [green, brown]}");
+  }
+  ObjectCondition condition;
+  for (const auto & kv : node) {
+    const std::string field = kv.first.as<std::string>();
+    if (!kFilterFields.count(field) && !kNumericFields.count(field)) {
+      fail(lineOf(kv.first),
+        what + ": unknown field '" + field + "' (use class, color, type, hue or area)");
+    }
+    condition[field] = values(kv.second, what + "." + field);
+    if (kNumericFields.count(field)) {
+      for (const auto & v : condition[field]) {
+        if (!isComparison(v)) {
+          fail(lineOf(kv.second), what + "." + field + ": expected a comparison such as "
+            "\"<92\" or \">=600\", got '" + v + "'");
+        }
+      }
+    }
+  }
+  return condition;
+}
+
 void checkVariables(const std::string & value, bool in_loop, int line, const std::string & what)
 {
   for (const auto & v : variablesIn(value)) {
@@ -114,7 +184,7 @@ void checkVariables(const std::string & value, bool in_loop, int line, const std
       fail(line, what + ": unknown variable $" + v + " (only $item and $index exist)");
     }
     if (!in_loop) {
-      fail(line, what + ": $" + v + " can only be used inside for_each");
+      fail(line, what + ": $" + v + " can only be used inside for_each or watch");
     }
   }
 }
@@ -175,13 +245,27 @@ Step parseStep(const YAML::Node & node, bool in_loop, const std::string & where)
         fail(lineOf(kv.first), what + ": unknown argument '" + key + "'" +
           (all.empty() ? std::string(" (it takes none)") : " (accepts: " + join(all) + ")"));
       }
+      // for_each and watch both set $item, so neither can sit inside the other; if and
+      // repeat_until only use it and can go anywhere a loop's steps can
+      const bool sets_item = step.kind == "for_each" || step.kind == "watch";
       if (key == "filter") {
         step.filter = parseFilter(kv.second, what + ".filter");
-      } else if (key == "do") {
-        if (in_loop) {
-          fail(lineOf(kv.first), what + ": for_each cannot be nested");
+      } else if (key == "when") {
+        step.condition = parseCondition(kv.second, what + ".when");
+      } else if (key == "color" && (step.kind == "if" || step.kind == "repeat_until")) {
+        step.condition["color"] = values(kv.second, what + ".color");
+      } else if ((key == "hue" || key == "area") && step.kind == "if") {
+        YAML::Node one;
+        one[key] = kv.second;
+        for (auto & [f, v] : parseCondition(one, what)) {
+          step.condition[f] = v;
         }
-        step.body = parseSteps(kv.second, true, where + ".do");
+      } else if (key == "do" || key == "then" || key == "else") {
+        if (sets_item && in_loop) {
+          fail(lineOf(kv.first), what + ": for_each and watch cannot be nested");
+        }
+        auto steps = parseSteps(kv.second, in_loop || sets_item, where + "." + key);
+        (key == "else" ? step.else_body : step.body) = std::move(steps);
       } else {
         step.args[key] = scalar(kv.second, what + "." + key);
       }
@@ -191,9 +275,21 @@ Step parseStep(const YAML::Node & node, bool in_loop, const std::string & where)
   }
 
   for (const auto & req : schema.required) {
-    if (req == "do" ? step.body.empty() : !step.args.count(req)) {
+    const bool missing =
+      (req == "do" || req == "then") ? step.body.empty() :
+      (req == "when" || req == "color") && step.kind != "detect" ? step.condition.empty() :
+      !step.args.count(req);
+    if (missing) {
       fail(step.line, what + ": missing required argument '" + req + "'");
     }
+  }
+  // if and repeat_until test an object, $item unless they are told which
+  if ((step.kind == "if" || step.kind == "repeat_until") && !step.args.count("item")) {
+    if (!in_loop) {
+      fail(step.line, what + ": needs an object to test, so use it inside for_each or watch "
+        "or give it an item");
+    }
+    step.args["item"] = "$item";
   }
   for (auto & [key, arg] : step.args) {
     if (arg.empty()) {
@@ -219,16 +315,38 @@ Step parseStep(const YAML::Node & node, bool in_loop, const std::string & where)
     fail(step.line, what + ".max_attempts: expected an integer 1..255");
   }
   if (const auto * m = get("max")) {
-    if (!isInteger(*m)) {
-      fail(step.line, what + ".max: expected a non-negative integer");
+    if (!isInteger(*m) || (step.kind == "repeat_until" && std::stoi(*m) < 1)) {
+      fail(step.line, what + ".max: expected " +
+        (step.kind == "repeat_until" ? "a positive integer" : "a non-negative integer"));
     }
     step.max = std::stoi(*m);
     step.args.erase("max");
   }
+  if (const auto * o = get("on_max"); o && *o != "fail" && *o != "continue") {
+    fail(step.line, what + ".on_max: expected fail or continue");
+  }
+  if (step.kind == "repeat_until" && step.max == 0) {
+    step.max = 10;  // a loop that waits on the world must end even if the world never changes
+  }
+  for (const char * key : {"seconds", "period", "timeout"}) {
+    if (const auto * v = get(key); v && (!isNumber(*v) || std::stod(*v) <= 0.0)) {
+      fail(step.line, what + "." + key + ": expected a positive number of seconds");
+    }
+  }
   if (step.kind == "detect") {
     for (const auto & [key, arg] : step.args) {
-      step.filter[key] = arg;  // detect's class and color are a filter for the detector
+      if (key == "class" || key == "color") {
+        step.filter[key] = arg;  // detect's class and color are a filter for the detector
+      }
     }
+    if (const auto * f = get("frames"); f && (!isInteger(*f) || std::stoi(*f) < 1 ||
+      std::stoi(*f) > 30))
+    {
+      fail(step.line, what + ".frames: expected an integer 1..30");
+    }
+  }
+  if (step.kind == "if" && step.condition.empty()) {
+    fail(step.line, what + ": needs something to test (color, hue or area)");
   }
   return step;
 }
@@ -265,7 +383,8 @@ std::string skillXml(const Step & step)
 {
   if (step.kind == "detect") {
     return "<DetectObjects" + attr("class", argOr(step, "class", "")) +
-           attr("color", argOr(step, "color", "")) + "/>";
+           attr("color", argOr(step, "color", "")) + attr("frames", argOr(step, "frames", "1")) +
+           "/>";
   }
   if (step.kind == "pick") {
     return "<Pick" + attr("object", step.args.at("object")) +
@@ -283,24 +402,67 @@ std::string skillXml(const Step & step)
   if (step.kind == "move_to") {
     return "<MoveToNamedPose" + attr("pose", step.args.at("pose")) + "/>";
   }
+  if (step.kind == "dispense") {
+    return "<Dispense/>";
+  }
+  if (step.kind == "wait") {
+    const long msec = std::lround(1000.0 * std::stod(step.args.at("seconds")));
+    return "<Sleep" + attr("msec", std::to_string(msec)) + "/>";
+  }
   throw std::logic_error("no skill node for step kind '" + step.kind + "'");
+}
+
+void stepXml(const Step & step, const std::string & policy, std::ostringstream & out,
+  const std::string & indent);
+
+void sequenceXml(const std::vector<Step> & steps, const std::string & name,
+  const std::string & policy, std::ostringstream & out, const std::string & indent)
+{
+  out << indent << "<Sequence" << attr("name", name) << ">\n";
+  for (const auto & s : steps) {
+    stepXml(s, policy, out, indent + "  ");
+  }
+  out << indent << "</Sequence>\n";
 }
 
 void stepXml(const Step & step, const std::string & policy, std::ostringstream & out,
   const std::string & indent)
 {
-  if (step.kind != "for_each") {
+  if (step.kind == "for_each") {
+    out << indent << "<ForEachObject" << attr("filter", encodeFilter(step.filter))
+        << attr("max", std::to_string(step.max)) << attr("on_failure", policy) << ">\n";
+    sequenceXml(step.body, "per_object", policy, out, indent + "  ");
+    out << indent << "</ForEachObject>\n";
+  } else if (step.kind == "watch") {
+    // the first child looks, the second handles one object that meets the condition
+    out << indent << "<WatchObjects" << attr("filter", encodeFilter(step.filter))
+        << attr("when", encodeCondition(step.condition))
+        << attr("period", argOr(step, "period", "3"))
+        << attr("timeout", argOr(step, "timeout", "300")) << attr("on_failure", policy) << ">\n";
+    out << indent << "  <DetectObjects class=\"\" color=\"\" frames=\"1\"/>\n";
+    sequenceXml(step.body, "per_object", policy, out, indent + "  ");
+    out << indent << "</WatchObjects>\n";
+  } else if (step.kind == "if") {
+    out << indent << "<IfThenElse>\n";
+    out << indent << "  <ObjectIs" << attr("item", step.args.at("item"))
+        << attr("condition", encodeCondition(step.condition)) << "/>\n";
+    sequenceXml(step.body, "then", policy, out, indent + "  ");
+    if (step.else_body.empty()) {
+      out << indent << "  <AlwaysSuccess/>\n";
+    } else {
+      sequenceXml(step.else_body, "else", policy, out, indent + "  ");
+    }
+    out << indent << "</IfThenElse>\n";
+  } else if (step.kind == "repeat_until") {
+    out << indent << "<RepeatUntilObject" << attr("item", step.args.at("item"))
+        << attr("condition", encodeCondition(step.condition))
+        << attr("max", std::to_string(step.max))
+        << attr("on_max", argOr(step, "on_max", "fail")) << ">\n";
+    sequenceXml(step.body, "round", policy, out, indent + "  ");
+    out << indent << "</RepeatUntilObject>\n";
+  } else {
     out << indent << skillXml(step) << "\n";
-    return;
   }
-  out << indent << "<ForEachObject" << attr("filter", encodeFilter(step.filter))
-      << attr("max", std::to_string(step.max)) << attr("on_failure", policy) << ">\n";
-  out << indent << "  <Sequence name=\"per_object\">\n";
-  for (const auto & s : step.body) {
-    stepXml(s, policy, out, indent + "    ");
-  }
-  out << indent << "  </Sequence>\n";
-  out << indent << "</ForEachObject>\n";
 }
 
 }  // namespace
@@ -361,13 +523,67 @@ ObjectFilter decodeFilter(const std::string & text)
   return filter;
 }
 
+std::string encodeCondition(const ObjectCondition & condition)
+{
+  std::string out;
+  for (const auto & [field, vals] : condition) {
+    std::vector<std::string> sorted = vals;
+    std::sort(sorted.begin(), sorted.end());
+    std::string list;
+    for (const auto & v : sorted) {
+      list += (list.empty() ? "" : ",") + v;
+    }
+    out += (out.empty() ? "" : ";") + field + "=" + list;
+  }
+  return out;
+}
+
+ObjectCondition decodeCondition(const std::string & text)
+{
+  ObjectCondition condition;
+  std::stringstream terms(text);
+  std::string term;
+  while (std::getline(terms, term, ';')) {
+    if (term.empty()) {
+      continue;
+    }
+    // split at the first '=', since a numeric value such as ">=95" has one of its own
+    const auto eq = term.find('=');
+    if (eq == std::string::npos || eq == 0 || eq + 1 == term.size()) {
+      throw std::invalid_argument("bad condition term '" + term + "' (expected field=values)");
+    }
+    const std::string field = term.substr(0, eq);
+    if (!kFilterFields.count(field) && !kNumericFields.count(field)) {
+      throw std::invalid_argument("unknown condition field '" + field + "'");
+    }
+    std::stringstream list(term.substr(eq + 1));
+    std::string v;
+    while (std::getline(list, v, ',')) {
+      if (!v.empty()) {
+        condition[field].push_back(v);
+      }
+    }
+    if (condition[field].empty()) {
+      throw std::invalid_argument("condition field '" + field + "' has no values");
+    }
+  }
+  return condition;
+}
+
 std::string Step::describe() const
 {
   std::string out = kind;
   for (const auto & [key, value] : filter) {
-    if (kind == "for_each") {
+    if (kind == "for_each" || kind == "watch") {
       out += " " + key + "=" + value;
     }
+  }
+  for (const auto & [key, vals] : condition) {
+    std::string list;
+    for (const auto & v : vals) {
+      list += (list.empty() ? "" : ",") + v;
+    }
+    out += (kind == "watch" ? " when " : " ") + key + "=" + list;
   }
   if (max > 0) {
     out += " max=" + std::to_string(max);

@@ -35,6 +35,8 @@ struct ObjectType
   std::string color;
   std::string shape;         // box or cylinder
   Eigen::Vector3d size = Eigen::Vector3d::Zero();  // bounding box (x, y, z)
+  // a colour to measure inside the top face, such as a colony on a culture dish ("" for none)
+  std::string inner_color;
 };
 
 struct Intrinsics
@@ -71,6 +73,8 @@ struct Detection
   Eigen::Vector3d top_center = Eigen::Vector3d::Zero();  // centre of the top face, table frame
   Eigen::Vector2d footprint = Eigen::Vector2d::Zero();   // measured top face (long, short side)
   cv::RotatedRect top_rect;                              // top face in pixels
+  double hue = 0.0;         // degrees 0..360, circular mean over the top face
+  double inner_area = 0.0;  // m^2 of the type's inner colour inside the top face
 };
 
 class Detector

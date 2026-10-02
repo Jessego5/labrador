@@ -1,0 +1,25 @@
+# This is the lab's growth experiment, run on the lab table (cell.launch.py scene:=lab). Three
+# culture dishes stand on the table with a colony on each that grows a stage at a time, each
+# stage after its own random interval. A dish is ready to harvest once its colony covers 600 mm^2,
+# which the camera measures as the area of the cream colony inside the dish's outline; the robot
+# watches the dishes and harvests each one into plate_rack as soon as it is ready, and not before.
+# The camera reads a colony about 10% small (the 707 mm^2 harvest stage measured 619 to 639, the
+# 452 mm^2 stage before it about 400), so the task harvests at a measured 550, between the two.
+# Set the samples out first with /lab/reset (protocol growth), which run_lab_trials does for each
+# run, then run it with
+#   ros2 action send_goal /executor/execute_task cell_interfaces/action/ExecuteTask \
+#     "{task_file: growth}"
+name: growth
+description: Watch the culture dishes and harvest each one once its colony covers 600 mm^2.
+on_failure: skip_step
+steps:
+  - detect
+  - watch:
+      filter: {class: dish}
+      when: {area: ">=550"}
+      period: 3
+      timeout: 400
+      do:
+        - pick: $item
+        - place: plate_rack
+  - move_to: home

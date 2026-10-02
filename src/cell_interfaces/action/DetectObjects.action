@@ -3,6 +3,8 @@
 # in a fresh frame.
 string object_class   # filters, empty matches everything
 string color
+uint8 frames          # frames to average before detecting (0 or 1 means one); more frames
+                      # average out camera noise, for a second look at a borderline reading
 ---
 bool success
 cell_interfaces/SkillError error

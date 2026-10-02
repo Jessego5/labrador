@@ -290,12 +290,15 @@ Eigen::Isometry3d Workspace::placePose(const std::string & target) const
   const std::string base = target.substr(0, slash);
   for (const auto & t : trays) {
     if (t.name == base) {
-      if (slash == std::string::npos) {
+      // a tray with a single slot, such as the lab's dispenser, is placed on by its own name
+      const bool single = t.rows * t.cols == 1;
+      if (slash == std::string::npos && !single) {
         throw std::invalid_argument(
                 "cannot place on tray '" + target + "' itself; name a slot, e.g. '" + target +
                 "/A1'");
       }
-      Eigen::Isometry3d pose = t.slotPose(target.substr(slash + 1));
+      Eigen::Isometry3d pose =
+        slash == std::string::npos ? t.slotPose(0, 0) : t.slotPose(target.substr(slash + 1));
       pose.translate(Eigen::Vector3d(0.0, 0.0, -t.slot_depth));
       return pose;
     }

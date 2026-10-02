@@ -1,0 +1,36 @@
+# This is the lab's titration, run on the lab table (cell.launch.py scene:=lab). Each yellow vial
+# goes into the dispenser and is dosed one dose at a time until it turns red, the endpoint; one
+# dose more turns it purple. How many doses each step of the colour scale takes differs from vial
+# to vial, so the robot looks after every dose rather than counting, and waits a little before
+# looking because the indicator takes a moment to turn. A vial that has not reached red after
+# twelve doses, or has gone past it, goes to waste instead of rack_done, so it never blocks the
+# dispenser for the next vial. Set the samples out first with
+# /lab/reset (protocol titration), which run_lab_trials does for each run, then run it with
+#   ros2 action send_goal /executor/execute_task cell_interfaces/action/ExecuteTask \
+#     "{task_file: titration}"
+name: titration
+description: Dose each vial in the dispenser, looking after every dose, until it reaches red.
+on_failure: skip_step
+steps:
+  - detect
+  - for_each:
+      filter: {class: vial, color: yellow}
+      do:
+        - pick: $item
+        - place: dispenser
+        - repeat_until:
+            color: red
+            max: 12
+            on_max: continue
+            do:
+              - dispense
+              - wait: 2.5
+              - detect
+        - pick: $item
+        - if:
+            color: red
+            then:
+              - place: rack_done
+            else:
+              - place: waste
+  - move_to: home

@@ -220,6 +220,11 @@ TEST(Resolve, PlacePoseIsWhereTheObjectBottomRests)
   EXPECT_TRUE(
     ws.placePose("peg_fixture").translation().isApprox(Eigen::Vector3d(0.66, 0.05, 0.02), 1e-9));
   EXPECT_THROW(ws.placePose("tray_1"), std::invalid_argument);
+  // a one-slot tray is its own target
+  Workspace one = ws;
+  one.trays[0].rows = 1;
+  one.trays[0].cols = 1;
+  EXPECT_TRUE(one.placePose("tray_1").isApprox(one.placePose("tray_1/A1"), kTol));
   EXPECT_THROW(ws.placePose("tray_1/E1"), std::out_of_range);
   EXPECT_THROW(ws.placePose("nope"), std::invalid_argument);
 }

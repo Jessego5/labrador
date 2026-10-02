@@ -56,6 +56,7 @@ BT::PortsList DetectObjectsNode::providedPorts()
   return {
     BT::InputPort<std::string>("class", "", "only objects of this class (empty = all)"),
     BT::InputPort<std::string>("color", "", "only objects of this colour (empty = all)"),
+    BT::InputPort<int>("frames", 1, "frames to average (a second look at a borderline reading)"),
   };
 }
 
@@ -63,6 +64,7 @@ std::optional<std::string> DetectObjectsNode::makeGoal(Goal & goal)
 {
   goal.object_class = getInput<std::string>("class").value_or("");
   goal.color = getInput<std::string>("color").value_or("");
+  goal.frames = static_cast<uint8_t>(getInput<int>("frames").value_or(1));
   filter_.clear();
   if (!goal.object_class.empty()) {
     filter_["class"] = goal.object_class;
@@ -79,12 +81,23 @@ void DetectObjectsNode::onResult(bool success, const Result * result, Json & rec
   if (!success || !result) {
     return;
   }
-  ctx_->world.updateDetections(result->objects, filter_);
+  const auto changes = ctx_->world.updateDetections(result->objects, filter_);
+  // the ids the world gave the objects, which are the ones a task refers to
   Json ids = Json::array();
-  for (const auto & o : result->objects) {
-    ids.push_back(o.id);
+  for (const auto & o : ctx_->world.detections()) {
+    if (World::matches(o, filter_)) {
+      ids.push_back(o.id);
+    }
   }
   record["objects"] = ids;
+  if (!changes.empty()) {
+    Json list = Json::array();
+    for (const auto & c : changes) {
+      list.push_back({{"id", c.id}, {"from", c.from}, {"to", c.to}});
+      ctx_->info(c.id + " changed from " + c.from + " to " + c.to);
+    }
+    record["changes"] = list;
+  }
   ctx_->info("detected " + std::to_string(result->objects.size()) + " object(s)");
 }
 
@@ -117,9 +130,6 @@ std::optional<std::string> PickNode::makeGoal(Goal & goal)
   if (!object) {
     return "no detected object '" + ref + "' (run detect first?)";
   }
-  if (ctx_->world.handled(object->id)) {
-    return "object " + object->id + " has already been put away";
-  }
   object_ = object->id;
   target_ = object->id;
   goal.object_id = object->id;
@@ -143,6 +153,7 @@ void PickNode::onResult(bool success, const Result * result, Json & record)
   record["object"] = object_;
   if (success) {
     ctx_->world.held = object_;
+    ctx_->world.unmarkHandled(object_);
   } else if (ctx_->world.held == object_) {
     ctx_->world.held.reset();
   }
@@ -175,10 +186,11 @@ std::optional<std::string> PlaceNode::makeGoal(Goal & goal)
   if (!ctx_->world.held) {
     return "not holding anything";
   }
-  if (ctx_->workspace) {
-    ctx_->workspace->placePose(wanted);  // throws for unknown targets
-  }
+  // allocate first: a tray named on its own ("rack_done") is only a target once it has a slot
   target_ = ctx_->allocateTarget(wanted);
+  if (ctx_->workspace) {
+    ctx_->workspace->placePose(target_);  // throws for unknown targets
+  }
   goal.target_name = target_;
   // By default precise targets such as tray slots get a compliant placement and bins get
   // position control. A compliant release on a bin floor jammed: the cube stayed pinned under
@@ -198,9 +210,17 @@ void PlaceNode::onResult(bool success, const Result * result, Json & record)
   if (!ctx_->world.held) {
     return;
   }
-  record["object"] = *ctx_->world.held;
+  const std::string id = *ctx_->world.held;
+  record["object"] = id;
   if (success) {
-    ctx_->world.markHandled(*ctx_->world.held);
+    // where it stands now, so the next detection recognises it there
+    if (ctx_->workspace) {
+      const auto object = ctx_->world.find(id);
+      const double half = object ? object->size.z / 2.0 : 0.0;
+      ctx_->world.moveTo(
+        id, ctx_->workspace->placePose(target_).translation() + Eigen::Vector3d(0, 0, half));
+    }
+    ctx_->world.markHandled(id);
     ctx_->world.held.reset();
   }
 }
@@ -272,6 +292,70 @@ std::optional<std::string> MoveToNamedPoseNode::makeGoal(Goal & goal)
   return std::nullopt;
 }
 
+// Dispense
+
+DispenseNode::DispenseNode(
+  const std::string & name, const BT::NodeConfig & config, std::shared_ptr<RunContext> ctx,
+  std::shared_ptr<SkillClients> skills)
+: BT::StatefulActionNode(name, config), ctx_(std::move(ctx)), skills_(std::move(skills))
+{
+}
+
+BT::NodeStatus DispenseNode::onStart()
+{
+  start_ = std::chrono::steady_clock::now();
+  sent_ = false;
+  ++ctx_->skill_calls;
+  ctx_->updateProgress([](Progress & p) {
+      p.skill = "Dispense";
+      p.phase.clear();
+    });
+  return onRunning();
+}
+
+BT::NodeStatus DispenseNode::onRunning()
+{
+  const double t =
+    std::chrono::duration<double>(std::chrono::steady_clock::now() - start_).count();
+  if (!skills_->dispense) {
+    return finish(false, "no dispenser client (is this the lab scene?)");
+  }
+  if (!sent_) {
+    if (!skills_->dispense->service_is_ready()) {
+      return t > skills_->server_wait ?
+             finish(false, "/lab/dispense is not available") : BT::NodeStatus::RUNNING;
+    }
+    future_ = skills_->dispense->async_send_request(
+      std::make_shared<std_srvs::srv::Trigger::Request>()).future.share();
+    sent_ = true;
+    return BT::NodeStatus::RUNNING;
+  }
+  if (future_.wait_for(std::chrono::seconds(0)) != std::future_status::ready) {
+    return t > 10.0 ? finish(false, "no answer from /lab/dispense") : BT::NodeStatus::RUNNING;
+  }
+  const auto response = future_.get();
+  return finish(response->success, response->message);
+}
+
+BT::NodeStatus DispenseNode::finish(bool ok, const std::string & message)
+{
+  const double duration = std::round(
+    std::chrono::duration<double>(std::chrono::steady_clock::now() - start_).count() * 100.0) /
+    100.0;
+  ctx_->log({{"event", "skill"}, {"skill", "Dispense"}, {"target", "dispenser"},
+      {"result", ok ? "SUCCESS" : "FAILURE"}, {"error", ok ? Json(nullptr) : Json("FAILED")},
+      {"message", message}, {"duration_s", duration}});
+  ctx_->updateProgress([](Progress & p) {p.skill.clear();});
+  if (ok) {
+    ctx_->info("Dispense ok (" + message + ")");
+    return BT::NodeStatus::SUCCESS;
+  }
+  ++ctx_->skill_failures;
+  ctx_->last_error = "Dispense: " + message;
+  ctx_->warn(ctx_->last_error);
+  return BT::NodeStatus::FAILURE;
+}
+
 void registerSkillNodes(
   BT::BehaviorTreeFactory & factory, std::shared_ptr<RunContext> ctx,
   std::shared_ptr<SkillClients> skills)
@@ -281,6 +365,7 @@ void registerSkillNodes(
   factory.registerNodeType<PlaceNode>("Place", ctx, skills);
   factory.registerNodeType<InsertNode>("Insert", ctx, skills);
   factory.registerNodeType<MoveToNamedPoseNode>("MoveToNamedPose", ctx, skills);
+  factory.registerNodeType<DispenseNode>("Dispense", ctx, skills);
 }
 
 }  // namespace cell_executor

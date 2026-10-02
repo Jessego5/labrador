@@ -37,14 +37,27 @@ std::string encodeFilter(const ObjectFilter & filter);
 // unknown field.
 ObjectFilter decodeFilter(const std::string & text);
 
+// A condition on what an object looks like now: field to the values that satisfy it, e.g.
+// {"color": {"green", "brown"}}. The fields are the filter fields.
+using ObjectCondition = std::map<std::string, std::vector<std::string>>;
+
+// "color=brown,green" (fields sorted, values sorted), the form stored in an XML attribute
+std::string encodeCondition(const ObjectCondition & condition);
+// The condition back from encodeCondition's text. Throws std::invalid_argument when malformed.
+ObjectCondition decodeCondition(const std::string & text);
+
 // one task step
 struct Step
 {
-  std::string kind;                         // detect, pick, place, insert, move_to, for_each
+  // detect, pick, place, insert, move_to, dispense, wait, for_each, watch, if, repeat_until
+  std::string kind;
   std::map<std::string, std::string> args;  // scalar arguments, as written
-  ObjectFilter filter;                      // for_each: which objects (empty = all)
-  int max = 0;                              // for_each: at most this many (0 = all)
-  std::vector<Step> body;                   // for_each: steps run per object
+  ObjectFilter filter;                      // for_each and watch: which objects (empty = all)
+  ObjectCondition condition;                // watch: when to act; if, repeat_until: the test
+  int max = 0;                              // for_each: at most this many objects (0 = all);
+                                            // repeat_until: at most this many rounds
+  std::vector<Step> body;                   // for_each, watch, repeat_until: do; if: then
+  std::vector<Step> else_body;              // if: else (may be empty)
   int line = 0;                             // 1-based line in the task file
 
   // a short human-readable form, e.g. "place target=tray_1/C$index"

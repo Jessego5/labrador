@@ -2,8 +2,9 @@
 // geometry: the overhead camera at (0.45, 0, 1.0) looking straight down, 640x480, fx = fy = 433
 // px. They check that each object type is found, classified and located to within 1.5 mm, that a
 // box's yaw is folded into a quarter turn, that the tray, a wrong-sized block, a cube behind the
-// robot base and a flat mark on the table are all ignored, and that the reported height follows
-// the measured top. No camera or simulator is needed. Run them with colcon test
+// robot base and a flat mark on the table are all ignored, that the reported height follows
+// the measured top, and that a culture dish's colony is measured as part of the dish rather than
+// reported as an object of its own. No camera or simulator is needed. Run them with colcon test
 // --packages-select cell_perception.
 #include <cmath>
 #include <string>
@@ -41,9 +42,9 @@ DetectorConfig config()
     {"yellow", {{cv::Scalar(18, 120, 70), cv::Scalar(35, 255, 255)}}},
   };
   c.types = {
-    {"red_cube", "cube", "red", "box", {0.04, 0.04, 0.04}},
-    {"blue_cylinder", "cylinder", "blue", "cylinder", {0.03, 0.03, 0.05}},
-    {"yellow_peg", "peg", "yellow", "cylinder", {0.02, 0.02, 0.06}},
+    {"red_cube", "cube", "red", "box", {0.04, 0.04, 0.04}, ""},
+    {"blue_cylinder", "cylinder", "blue", "cylinder", {0.03, 0.03, 0.05}, ""},
+    {"yellow_peg", "peg", "yellow", "cylinder", {0.02, 0.02, 0.06}, ""},
   };
   return c;
 }
@@ -87,7 +88,7 @@ struct Scene
 };
 
 const cv::Scalar kRed(217, 25, 25), kBlue(25, 76, 217), kYellow(230, 204, 25);
-const cv::Scalar kTrayBlue(89, 140, 191);
+const cv::Scalar kTrayBlue(89, 140, 191), kMagenta(140, 20, 107);
 
 const Detection * find(const std::vector<Detection> & ds, const std::string & type)
 {
@@ -168,4 +169,30 @@ TEST(Detector, RejectsMismatchedImages)
 {
   const cv::Mat rgb(480, 640, CV_8UC3), depth(240, 320, CV_32FC1);
   EXPECT_THROW(Detector(config()).detect(rgb, depth, kK, cameraPose()), std::invalid_argument);
+}
+
+TEST(Detector, CountsAColonyAsPartOfItsDish)
+{
+  // A magenta culture dish 56 mm across and 25 mm deep with a yellow colony 30 mm across on top,
+  // and a yellow type the colony's size, so the colony alone would pass as one. The colony is
+  // the dish's inner area and is not reported again; the same disc on the table still is.
+  auto c = config();
+  c.colors.push_back({"magenta", {{cv::Scalar(150, 120, 100), cv::Scalar(168, 255, 255)}}});
+  c.types.push_back({"dish", "dish", "magenta", "cylinder", {0.056, 0.056, 0.025}, "yellow"});
+  c.types.push_back({"yellow_disc", "vial", "yellow", "cylinder", {0.03, 0.03, 0.025}, ""});
+  Scene s;
+  s.disk(0.50, 0.10, 0.056, 0.025, kMagenta);
+  s.disk(0.50, 0.10, 0.030, 0.0255, kYellow);
+  s.disk(0.40, -0.15, 0.030, 0.025, kYellow);
+  const auto ds = Detector(c).detect(s.rgb, s.depth, kK, s.cam);
+  ASSERT_EQ(ds.size(), 2u);
+  const Detection * dish = find(ds, "dish");
+  ASSERT_NE(dish, nullptr);
+  // pi * 15^2 mm^2; the colony is 6.7 px in radius here, so counting pixels is good to about
+  // 15% (the half-pixel ring at its edge), and it reads 806
+  EXPECT_NEAR(dish->inner_area * 1e6, 707.0, 120.0);
+  const Detection * disc = find(ds, "yellow_disc");
+  ASSERT_NE(disc, nullptr);
+  EXPECT_NEAR(disc->top_center.x(), 0.40, 0.002);
+  EXPECT_NEAR(disc->top_center.y(), -0.15, 0.002);
 }

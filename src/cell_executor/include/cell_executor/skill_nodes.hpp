@@ -30,6 +30,7 @@
 #include <cell_interfaces/msg/skill_error.hpp>
 #include <rclcpp/rclcpp.hpp>
 #include <rclcpp_action/rclcpp_action.hpp>
+#include <std_srvs/srv/trigger.hpp>
 
 #include "cell_executor/run_context.hpp"
 
@@ -47,6 +48,7 @@ struct SkillClients
   rclcpp_action::Client<cell_interfaces::action::Place>::SharedPtr place;
   rclcpp_action::Client<cell_interfaces::action::Insert>::SharedPtr insert;
   rclcpp_action::Client<cell_interfaces::action::MoveToNamedPose>::SharedPtr move;
+  rclcpp::Client<std_srvs::srv::Trigger>::SharedPtr dispense;  // the lab's /lab/dispense
 
   std::map<std::string, double> timeouts;  // skill name ("Pick") -> s
   double server_wait = 10.0;               // s to wait for an action server to appear
@@ -389,7 +391,29 @@ private:
   std::optional<std::string> makeGoal(Goal & goal) override;
 };
 
-// registers the five skill nodes with the factory
+// Doses the vial standing in the lab's dispenser through /lab/dispense, which the lab node
+// serves. It is a service rather than an action because a dose is instant; the indicator then
+// takes a moment to show it, so a task waits before it looks again.
+class DispenseNode : public BT::StatefulActionNode
+{
+public:
+  DispenseNode(const std::string & name, const BT::NodeConfig & config,
+    std::shared_ptr<RunContext> ctx, std::shared_ptr<SkillClients> skills);
+  static BT::PortsList providedPorts() {return {};}
+
+private:
+  BT::NodeStatus onStart() override;
+  BT::NodeStatus onRunning() override;
+  void onHalted() override {}
+  BT::NodeStatus finish(bool ok, const std::string & message);
+  std::shared_ptr<RunContext> ctx_;
+  std::shared_ptr<SkillClients> skills_;
+  std::chrono::steady_clock::time_point start_;
+  bool sent_ = false;
+  rclcpp::Client<std_srvs::srv::Trigger>::SharedFuture future_;
+};
+
+// registers the skill nodes, and Dispense, with the factory
 void registerSkillNodes(
   BT::BehaviorTreeFactory & factory, std::shared_ptr<RunContext> ctx,
   std::shared_ptr<SkillClients> skills);

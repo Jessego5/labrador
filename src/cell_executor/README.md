@@ -52,35 +52,69 @@ is a cylinder too.
 
 | Step | Arguments | Skill |
 |---|---|---|
-| `detect` | `class`, `color` (optional filters) | `DetectObjects` |
+| `detect` | `class`, `color` (optional filters), `frames` (average several, 1 to 30) | `DetectObjects` |
 | `pick` | `object` (required), `grasp` | `Pick` |
 | `place` | `target` (required), `compliance: true/false` | `Place` |
 | `insert` | `target` (required), `max_force` (N), `max_attempts` | `Insert` |
 | `move_to` | `pose` (required, SRDF named pose) | `MoveToNamedPose` |
+| `dispense` | none | `/lab/dispense` (lab scene) |
+| `wait` | `seconds` (required) | none |
 | `for_each` | `do` (required, list of steps), `filter`, `max` | none |
+| `watch` | `when` and `do` (required), `filter`, `period`, `timeout` | none |
+| `if` | `then` (required), one or more of `color`, `hue`, `area`, and `else`, `item` | none |
+| `repeat_until` | `color` and `do` (required), `max` (default 10), `on_max`, `item` | none |
 
 A step with one main argument can be written as a scalar, so `- move_to: home`,
 `- place: bin_a` and `- detect` are all valid.
 
-Objects come from the most recent `detect`. A step refers to one by its detection id
-(`blue_cylinder_2`) or by `<class>_<n>` or `<type>_<n>`, the n-th detection of that class or
-type ordered by id, so `peg_0` is the first detected peg.
+Objects come from the detections. A step refers to one by its id (`blue_cylinder_2`) or by
+`<class>_<n>` or `<type>_<n>`, the n-th object of that class or type ordered by id, so `peg_0`
+is the first detected peg. An object keeps the id it was first detected with for the whole run,
+even when it looks different later: each detection is matched to the known object of the same
+class within 2 cm of where it was last seen, and a place moves the object to its target. That is
+what lets a task wait for a vial to change colour, since the detector names things by what they
+look like now (a vial that turned green is `vial_green_0` to the detector, but stays
+`vial_blue_1` to the task).
 
 `for_each` runs its `do` steps once per detected object that matches `filter` (the fields are
-`class`, `color` and `type`), at most `max` times, skipping objects that have already been put
-away. The objects are chosen when the loop starts. Inside the loop `$item` is the object id and
-`$index` its 1-based number, and they work in any argument, as in `tray_1/C$index`. Loops do
-not nest.
+`class`, `color` and `type`), at most `max` times, skipping objects that have been put away. An
+object counts as put away from the moment it is placed until it is picked again, so a vial picked
+back out of the dispenser is in play again. The objects are chosen when the loop starts, and when
+that list runs out the loop asks again, so an object a look inside the loop saw for the first time
+is handled too (a one-frame look at the start of a readout run once missed a tube that the six-frame
+look inside the loop found). Inside the loop `$item` is the object id and `$index` its 1-based
+number, and they work in any argument, as in `tray_1/C$index`. `for_each` and `watch` both set
+`$item`, so neither can sit inside the other.
 
-Bins have drop spots. `workspace.yaml` gives a bin a `spots: [rows, cols]` grid, and
-`place: bin_a` puts each object on the next free spot (`bin_a/1`, `bin_a/2`, ...). The spots are
-there because two cubes placed at the bin centre landed on each other; with them the objects end
-up side by side. Once every spot is used, the executor starts again at spot 1 and logs a
-warning.
+`watch` is for things that happen on their own time. It looks (a detection) and takes every
+object that matches `filter` as watched; then each time it looks it handles every watched
+object that meets `when`, one at a time and looking again after each, because more may have
+changed meanwhile. When nothing is ready it waits `period` seconds (default 3) and looks again.
+It ends when every watched object has been handled, and fails after `timeout` seconds (default
+300). `when` takes a value or a list, `{color: [green, brown]}`.
+
+`if` tests what an object looks like now, `$item` unless `item` says otherwise, and runs `then` or
+`else` (which may be left out). Besides `color` it can test two measurements perception reports:
+`hue`, the top face's mean hue in degrees, and `area`, the colony inside a culture dish in mm^2.
+Those take comparisons, and every one in a list must hold, so `hue: ["<=125", ">=95"]` is a range;
+`watch`'s `when` takes them too, as in `when: {area: ">=550"}`. `repeat_until` checks its object
+before every round and runs `do` until the object meets the condition, so its steps have to change
+the object and look at it again, as the titration's `dispense`, `wait`, `detect` does. After `max`
+rounds it fails, or with `on_max: continue` carries on so the task can deal with the object itself.
+
+Trays named on their own get their next free slot in row order, so `place: rack_done` fills
+`rack_done/A1`, then `A2`, and so on, and a tray with a row letter fills that row, so `place:
+rack_done/B` gives `rack_done/B1`, then `B2`; a tray with a single slot, such as the lab's
+dispenser, is simply its own slot. Bins have drop spots. `workspace.yaml` gives a bin a `spots:
+[rows, cols]` grid, and `place: bin_a` puts each object on the next free spot (`bin_a/1`, `bin_a/2`,
+...). The spots are there because two cubes placed at the bin centre landed on each other; with them
+the objects end up side by side. Once every spot is used, the executor starts again at spot 1 and
+logs a warning.
 
 When a step does not give `grasp`, the grasp strategy comes from the object class through the
-`grasp_strategies` parameter. The default is `peg:insert`, the high grasp that keeps the
-fingertips above the fixture.
+`grasp_strategies` parameter. The default is `peg:insert, vial:insert`: the high grasp, which
+keeps the fingertips above the fixture for the peg and above the rack for a vial standing in a
+pocket.
 
 Places into tray slots use the compliance controller (parameter `place_compliance`, default
 true). Bins always use position control, and the object is released 3 mm above the floor. A
@@ -100,7 +134,7 @@ searches and retries `max_attempts` times before it gives up.
 | `on_failure` | Effect |
 |---|---|
 | `safe_stop` (default) | Put down whatever the gripper holds in `bin_b`, go home, end as `safe_stopped` (`trees/safe_stop.xml`) |
-| `skip_step` | Log the failure and continue. Inside a `for_each`, only that object is skipped. |
+| `skip_step` | Log the failure and continue. Inside a `for_each` or `watch`, only that object is skipped. A task that skipped anything ends as `partial`, not `succeeded`. |
 | `abort` | Stop where the robot is, end as `failed` |
 
 There are no recovery subtrees yet. A failed step is not re-detected, retried or tried with
@@ -135,6 +169,10 @@ policy. Under `safe_stop` the task's `Sequence` sits in a `Fallback` whose secon
 | `DetectObjects`, `Pick`, `Place`, `Insert`, `MoveToNamedPose` | action | one per skill (`skill_nodes.hpp`) |
 | `Step` | decorator | progress, failure policy |
 | `ForEachObject` | decorator | loop over detected objects, sets `item` / `index` on the blackboard |
+| `WatchObjects` | control | the watch loop: a look as its first child, the per-object steps as its second |
+| `RepeatUntilObject` | decorator | repeats its child until an object meets a condition |
+| `ObjectIs` | condition | the test of an `if`, inside BehaviorTree.CPP's `IfThenElse` |
+| `Dispense` | action | calls `/lab/dispense`; `wait` becomes the built-in `Sleep` |
 | `IsHolding` | condition | the gripper holds an object |
 
 The executor loads every `.xml` file in `trees/` except files whose names start with '.'.
@@ -154,7 +192,7 @@ executor delivers the responses.
 
 | | Name | Type |
 |---|---|---|
-| action | `/executor/execute_task` | `cell_interfaces/ExecuteTask`: goal `task_file` (a bare name is looked up in `tasks/`) or `task_yaml` (inline YAML); feedback is the current step, object, skill and phase; the result gives the outcome (`succeeded`, `failed`, `safe_stopped`, `aborted`, `invalid`) and counts |
+| action | `/executor/execute_task` | `cell_interfaces/ExecuteTask`: goal `task_file` (a bare name is looked up in `tasks/`) or `task_yaml` (inline YAML); feedback is the current step, object, skill and phase; the result gives the outcome (`succeeded`, `partial`, `failed`, `safe_stopped`, `aborted`, `invalid`) and counts |
 | service | `/executor/pause`, `/executor/resume`, `/executor/abort` | `std_srvs/Trigger` |
 | topic | `/executor/state` | `std_msgs/String`, JSON, 2 Hz |
 | ZeroMQ | tcp port 1667 (`groot_port`) | Groot2 live view (`BT::Groot2Publisher`) |
@@ -196,9 +234,34 @@ simulator's ground truth: both red cubes are in `bin_a`, a cylinder is seated in
 It passed 10 of 10. The slot error was about 1.9 mm, which is cylinders resting against a pocket
 wall and within the 2 mm clearance, the peg error about 0.37 mm, and a task took about 107 s.
 
+## Lab protocols (part 7)
+
+Four task files run on the lab table (`cell.launch.py scene:=lab`, see `cell_lab`), each after
+`/lab/reset` has set its samples out:
+
+| Task | What the robot does |
+|---|---|
+| `color_assay` | watches four vials and sorts each as it changes: green to `rack_done`, brown to `waste` |
+| `titration` | doses each vial in the dispenser, looking after every dose, until it turns red; a vial that never does goes to `waste` |
+| `growth` | watches three culture dishes and harvests each into `plate_rack` once its colony measures 550 mm^2 (the camera reads colonies about 10% small, so this is the true 600) |
+| `readout` | sorts tubes by hue, positives to `rack_done/A` and negatives to `rack_done/B`; a weak reading gets a second look averaging six frames, and one still in the middle goes to `retest` rather than being guessed |
+
+`ros2 run cell_benchmarks run_lab_trials --protocol all --seeds 1-10` runs them unattended and
+scores every decision against the truth `cell_lab` kept.
+
+Over seeds 1 to 10 every protocol made every decision right: the assay 40 of 40 (no vial picked
+before it changed, a changed vial waited 14 s on average and 52 s at most, since the robot can
+only be at one vial at a time), the titration 20 of 20 with no overshoot, growth 30 of 30 with no
+early harvest, and the readout 40 of 40 with no borderline tube guessed. A task took about 111,
+90, 125 and 72 s. The camera needs the CPU to render on demand: with other heavy jobs on the
+host, frames came more than 5 s late and readout runs skipped tubes, so run it on a quiet
+machine.
+
 ## Tests
 
 `test_task` covers the parser, the validation messages, XML generation and variable expansion.
-`test_tree` runs generated trees with the real `Step`, `ForEachObject`, `IsHolding` and
-`SafeStop` nodes and stub skills, and checks the call order, the bin spots and each failure
-policy. Both run without ROS or a robot.
+`test_tree` runs generated trees with the real `Step`, `ForEachObject`, `WatchObjects`,
+`RepeatUntilObject`, `ObjectIs`, `IsHolding` and `SafeStop` nodes and stub skills, and checks the
+call order, the bin spots and tray slots, each failure policy, and the watch and titration loops
+against a scripted camera whose frames change from look to look. Both run without ROS or a
+robot.

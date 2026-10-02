@@ -3,13 +3,14 @@ This brings up the whole cell: the simulation from sim.launch.py, MoveIt's move_
 skill server, the perception node and the task executor. It is what the benchmarks and the task
 files run against. Run it with ros2 launch cell_bringup cell.launch.py, add headless:=true
 rviz:=false to run without the MuJoCo viewer and RViz, or add task:=sort_and_insert to have the
-executor run that task as soon as it starts.
+executor run that task as soon as it starts. scene:=lab runs the lab table instead: every node
+then reads the lab's layout and object types, and cell_lab starts to run the samples' chemistry.
 """
 import os
 
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription
+from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription, OpaqueFunction
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
@@ -39,7 +40,25 @@ def moveit_configs():
     )
 
 
-def generate_launch_description():
+# The files each scene's nodes read: the workspace layout (skills, executor), the object types
+# and colour thresholds (perception), and whether the lab's chemistry node runs. sim.launch.py
+# has the matching table for the MuJoCo model.
+SCENES = {
+    "default": {"workspace": "config/workspace.yaml", "objects": "config/objects.yaml",
+                "perception": "perception.yaml", "lab": False, "color_noise": 0.0},
+    # the lab adds camera noise, which the test readout's second look exists to average out
+    "lab": {"workspace": "config/lab/workspace.yaml", "objects": "config/lab/lab.yaml",
+            "perception": "perception_lab.yaml", "lab": True, "color_noise": 0.05},
+}
+
+
+def launch_setup(context):
+    scene = LaunchConfiguration("scene").perform(context)
+    if scene not in SCENES:
+        raise ValueError(f"unknown scene '{scene}', expected one of {', '.join(SCENES)}")
+    files = SCENES[scene]
+    description = get_package_share_directory("cell_description")
+    workspace_file = os.path.join(description, files["workspace"])
     moveit = moveit_configs()
     sim_time = {"use_sim_time": True}
 
@@ -49,6 +68,7 @@ def generate_launch_description():
         launch_arguments={
             "headless": LaunchConfiguration("headless"),
             "rviz": LaunchConfiguration("rviz"),
+            "scene": scene,
         }.items(),
     )
 
@@ -70,6 +90,7 @@ def generate_launch_description():
             moveit.robot_description_kinematics,
             moveit.joint_limits,
             sim_time,
+            {"workspace_file": workspace_file},
         ],
     )
 
@@ -77,25 +98,43 @@ def generate_launch_description():
         package="cell_perception",
         executable="perception_node",
         output="screen",
-        parameters=[sim_time],
+        parameters=[sim_time, {
+            "objects_file": os.path.join(description, files["objects"]),
+            "perception_file": os.path.join(
+                get_package_share_directory("cell_perception"), "config", files["perception"]),
+            "color_noise": files["color_noise"],
+        }],
     )
 
     executor = Node(
         package="cell_executor",
         executable="executor_node",
         output="screen",
-        parameters=[{"task": LaunchConfiguration("task")}],
+        parameters=[{"task": LaunchConfiguration("task"), "workspace_file": workspace_file}],
     )
 
+    nodes = [sim, move_group, skills, perception, executor]
+    if files["lab"]:
+        # the lab's chemistry, which sets the samples out and changes them as they react
+        nodes.append(Node(
+            package="cell_lab",
+            executable="lab_node",
+            output="screen",
+            parameters=[sim_time, {
+                "lab_file": os.path.join(description, files["objects"]),
+                "workspace_file": workspace_file,
+            }],
+        ))
+    return nodes
+
+
+def generate_launch_description():
     return LaunchDescription([
         DeclareLaunchArgument("headless", default_value="false"),
         DeclareLaunchArgument("rviz", default_value="true"),
+        DeclareLaunchArgument("scene", default_value="default", description="default or lab"),
         DeclareLaunchArgument(
             "task", default_value="",
             description="task file (name in cell_executor/tasks or a path) to run at startup"),
-        sim,
-        move_group,
-        skills,
-        perception,
-        executor,
+        OpaqueFunction(function=launch_setup),
     ])

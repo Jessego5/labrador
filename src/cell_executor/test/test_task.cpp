@@ -95,7 +95,7 @@ TEST(TaskParse, ReportsErrorsWithLineNumbers)
     "name: t\nsteps:\n  - for_each: {do: [{pick: $thing}]}\n", "unknown variable $thing");
   EXPECT_ERROR(
     "name: t\nsteps:\n  - for_each:\n      do:\n        - for_each: {do: [detect]}\n",
-    "for_each cannot be nested");
+    "for_each and watch cannot be nested");
   EXPECT_ERROR("name: t\nsteps:\n  - for_each: {filter: {shape: box}, do: [detect]}\n",
     "unknown field 'shape'");
   EXPECT_ERROR("name: t\nsteps:\n  - for_each: {filter: {class: cube}}\n",
@@ -172,4 +172,94 @@ TEST(Filters, RoundTrip)
   EXPECT_TRUE(decodeFilter("").empty());
   EXPECT_THROW(decodeFilter("class"), std::invalid_argument);
   EXPECT_THROW(decodeFilter("size=4"), std::invalid_argument);
+}
+
+TEST(TaskParse, LabSteps)
+{
+  const Task task = parseTask(R"(
+name: lab
+steps:
+  - detect
+  - watch:
+      filter: {class: vial}
+      when: {color: [green, brown]}
+      period: 2
+      do:
+        - pick: $item
+        - if: {color: green, then: [{place: rack_done}], else: [{place: waste}]}
+  - for_each:
+      filter: {color: yellow}
+      do:
+        - repeat_until: {color: red, do: [dispense, {wait: 1.5}, detect]}
+)");
+  ASSERT_EQ(task.steps.size(), 3u);
+  const auto & watch = task.steps[1];
+  EXPECT_EQ(watch.condition.at("color"), (std::vector<std::string>{"green", "brown"}));
+  EXPECT_EQ(watch.filter.at("class"), "vial");
+  const auto & branch = watch.body[1];
+  EXPECT_EQ(branch.kind, "if");
+  EXPECT_EQ(branch.args.at("item"), "$item");
+  EXPECT_EQ(branch.body[0].args.at("target"), "rack_done");
+  EXPECT_EQ(branch.else_body[0].args.at("target"), "waste");
+  const auto & repeat = task.steps[2].body[0];
+  EXPECT_EQ(repeat.max, 10);  // the default
+  EXPECT_EQ(repeat.body[1].args.at("seconds"), "1.5");
+
+  const std::string xml = toBehaviorTreeXml(task);
+  EXPECT_NE(xml.find("<WatchObjects filter=\"class=vial\" when=\"color=brown,green\" "
+    "period=\"2\""), std::string::npos) << xml;
+  EXPECT_NE(xml.find("<ObjectIs item=\"$item\" condition=\"color=green\"/>"),
+    std::string::npos);
+  EXPECT_NE(xml.find("<RepeatUntilObject item=\"$item\" condition=\"color=red\" max=\"10\" "
+    "on_max=\"fail\">"), std::string::npos);
+  EXPECT_NE(xml.find("<Sleep msec=\"1500\"/>"), std::string::npos);
+  EXPECT_NE(xml.find("<Dispense/>"), std::string::npos);
+}
+
+TEST(TaskParse, LabStepErrors)
+{
+  EXPECT_ERROR("name: t\nsteps:\n  - if: {color: green, then: [detect]}\n",
+    "needs an object to test");
+  EXPECT_ERROR(
+    "name: t\nsteps:\n  - watch: {when: {color: green}, do: [{for_each: {do: [detect]}}]}\n",
+    "for_each and watch cannot be nested");
+  EXPECT_ERROR("name: t\nsteps:\n  - watch: {do: [detect]}\n",
+    "missing required argument 'when'");
+  EXPECT_ERROR("name: t\nsteps:\n  - wait: -1\n", "expected a positive number of seconds");
+  EXPECT_ERROR("name: t\nsteps:\n  - repeat_until: {item: v, color: red, max: 0, do: [detect]}\n",
+    "max: expected a positive integer");
+  EXPECT_ERROR("name: t\nsteps:\n  - watch: {when: {shade: dark}, do: [detect]}\n",
+    "unknown field 'shade'");
+  EXPECT_ERROR(
+    "name: t\nsteps:\n  - repeat_until: {item: v, color: red, on_max: retry, do: [detect]}\n",
+    "on_max: expected fail or continue");
+}
+
+TEST(TaskParse, NumericConditions)
+{
+  const Task task = parseTask(R"(
+name: t
+steps:
+  - detect: {frames: 4}
+  - for_each:
+      filter: {class: tube}
+      do:
+        - if: {hue: ["<=125", ">=95"], then: [detect]}
+)");
+  EXPECT_EQ(task.steps[0].args.at("frames"), "4");
+  EXPECT_EQ(task.steps[1].body[0].condition.at("hue").size(), 2u);
+  EXPECT_NE(toBehaviorTreeXml(task).find("frames=\"4\""), std::string::npos);
+  EXPECT_ERROR("name: t\nsteps:\n  - for_each: {do: [{if: {hue: blue, then: [detect]}}]}\n",
+    "expected a comparison");
+  EXPECT_ERROR("name: t\nsteps:\n  - detect: {frames: 0}\n", "frames: expected an integer 1..30");
+  EXPECT_ERROR("name: t\nsteps:\n  - for_each: {do: [{if: {then: [detect]}}]}\n",
+    "needs something to test");
+}
+
+TEST(Conditions, RoundTrip)
+{
+  const cell_executor::ObjectCondition c = {{"color", {"green", "brown"}}};
+  EXPECT_EQ(cell_executor::encodeCondition(c), "color=brown,green");
+  EXPECT_EQ(cell_executor::decodeCondition("color=brown,green").at("color").size(), 2u);
+  EXPECT_THROW(cell_executor::decodeCondition("color="), std::invalid_argument);
 }

@@ -133,8 +133,9 @@ public:
   // Where a placed object's bottom centre should end up, oriented like the target: the pocket
   // floor for "tray_1/C4", the floor for "bin_a" and the bottom of the hole for "peg_fixture".
   // This is not the same as resolve(), which gives the opening a robot aims at; a place has to
-  // know how far down the object comes to rest. Throws std::invalid_argument for an unknown name
-  // or a bare tray name ("tray_1"), and std::out_of_range for a bad slot.
+  // know how far down the object comes to rest. A tray with a single slot can be named on its
+  // own, which places in that slot. Throws std::invalid_argument for an unknown name or the bare
+  // name of a tray with several slots ("tray_1"), and std::out_of_range for a bad slot.
   Eigen::Isometry3d placePose(const std::string & target) const;
 
   // the bin called `name`, or nullptr when there is none

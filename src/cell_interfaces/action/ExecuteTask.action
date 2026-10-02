@@ -5,7 +5,8 @@ string task_file        # path, or a bare name ("sort_and_insert") looked up in 
 string task_yaml        # inline task YAML, used when task_file is empty
 ---
 bool success
-string outcome          # succeeded, failed, safe_stopped, aborted, invalid
+string outcome          # succeeded, partial (skip_step skipped something), failed, safe_stopped,
+                        # aborted, invalid
 string message
 uint32 steps_total      # top-level steps in the task
 uint32 steps_succeeded

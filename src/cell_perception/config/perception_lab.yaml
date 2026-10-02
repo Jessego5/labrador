@@ -1,0 +1,54 @@
+# These are the detector settings for the lab scene (scene:=lab), the same format as
+# perception.yaml and loaded through perception_node's perception_file parameter. Only the
+# colours differ: the lab's vials come in seven, and each range below was set from the vials'
+# pixels in the rendered overhead image rather than from their RGB values, because the light
+# overexposes the top faces (V reads 255 on every vial but brown) and pulls the colours apart
+# from what the material says. Measured top faces: red H 0, brown H 13 at V 166, orange H 22,
+# yellow H 30, green H 66, blue H 108, purple H 125 to 138. The racks and the dispenser are a
+# desaturated blue (H 98 to 102, S 77 to 119), which blue's and purple's saturation floors keep
+# out. The object types come from cell_description/config/lab/lab.yaml.
+
+# HSV thresholds per colour, in OpenCV's ranges (H 0..180, S and V 0..255), unioned per colour.
+# orange, yellow and brown share hues within 17 of each other, so they are split by value as well
+# as hue: brown is the only one that is not overexposed. green's saturation floor is 145 rather
+# than the default scene's 120, because the shaded rack floor reaches S 133 at hues up to 130 and
+# joined the vials standing in it into one blob, and its value floor is 215, which leaves the
+# darker green test tubes to the readout colour.
+colors:
+  red:
+    - {lo: [0, 150, 80], hi: [6, 255, 255]}
+    - {lo: [172, 150, 80], hi: [180, 255, 255]}
+  brown:
+    - {lo: [8, 150, 100], hi: [17, 255, 205]}
+  orange:
+    - {lo: [18, 150, 215], hi: [25, 255, 255]}
+  yellow:
+    - {lo: [26, 150, 215], hi: [35, 255, 255]}
+  green:
+    - {lo: [45, 145, 215], hi: [85, 255, 255]}
+  blue:
+    - {lo: [100, 140, 40], hi: [118, 255, 255]}
+  purple:
+    - {lo: [122, 90, 40], hi: [148, 255, 255]}
+  # the culture dishes, H 158 at V 215 to 225
+  magenta:
+    - {lo: [152, 120, 150], hi: [168, 255, 255]}
+  # The test tubes' indicator scale, H 30 to 88 and kept dark (V about 177), so it is told from
+  # the overexposed yellow, orange and green vials (V 255) by value. The detector reports each
+  # tube's measured hue; the task reads the result from that. The camera noise tints each frame
+  # by a gain per channel, so both ends have room: the teal tube reaches 92 (184 degrees), and
+  # the amber tube at 30 fell under the old floor of 27 in 7% of single frames, which left three
+  # tubes of one readout run unsorted. The floor of 20 stays clear of brown (up to 17); orange
+  # vials are told apart by value, and only about 11 of their shaded side pixels fall in here,
+  # too few to make a blob. The racks stay out by saturation.
+  readout:
+    - {lo: [20, 120, 100], hi: [96, 255, 205]}
+
+# where object centres are accepted, in the table frame (m), which leaves out the robot base area
+roi: {x: [0.15, 0.85], y: [-0.55, 0.55]}
+
+min_area_px: 25          # the 20 mm peg is ~9 px across at 640x480
+top_band: 0.0015         # m; tight, so the top strip of visible side faces is excluded
+max_size_error: 0.012    # m
+max_height_error: 0.015  # m
+top_height: [0.005, 0.15]

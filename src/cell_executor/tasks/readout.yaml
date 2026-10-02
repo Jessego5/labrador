@@ -1,0 +1,47 @@
+# This is the lab's test readout, run on the lab table (cell.launch.py scene:=lab). Each tube in
+# rack_in shows a point on an indicator scale from olive (negative, hue near 60 degrees) to teal
+# (positive, near 176), and the lab camera has frame-to-frame colour noise like a real one. A tube
+# that is clearly one or the other on the first look (three frames averaged, because one noisy frame
+# missed tubes) is sorted at once: positives to row A of rack_done, negatives to row B. Any other
+# reading gets a second look that averages six frames; then a hue below 95 is negative, above 125
+# positive, and anything between is set aside in retest rather than guessed, because a wrong call is
+# worse than no call. Set the samples out first with /lab/reset (protocol readout), which
+# run_lab_trials does for each run, then run it with
+#   ros2 action send_goal /executor/execute_task cell_interfaces/action/ExecuteTask \
+#     "{task_file: readout}"
+name: readout
+description: Read each tube's result by hue, look twice at weak readings, set unclear ones aside.
+on_failure: skip_step
+steps:
+  - detect: {frames: 3}
+  - for_each:
+      filter: {class: tube}
+      do:
+        - if:
+            hue: "<75"
+            then:
+              - pick: $item
+              - place: rack_done/B
+            else:
+              - if:
+                  hue: ">155"
+                  then:
+                    - pick: $item
+                    - place: rack_done/A
+                  else:
+                    - detect: {frames: 6}
+                    - if:
+                        hue: "<95"
+                        then:
+                          - pick: $item
+                          - place: rack_done/B
+                        else:
+                          - if:
+                              hue: ">125"
+                              then:
+                                - pick: $item
+                                - place: rack_done/A
+                              else:
+                                - pick: $item
+                                - place: retest
+  - move_to: home

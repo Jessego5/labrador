@@ -15,6 +15,7 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/DetectedObjectArray.msg"
   "msg/SkillError.msg"
   "srv/DetectObjects.srv"
+  "srv/LabReset.srv"
   "srv/ResolveTarget.srv"
   "action/DetectObjects.action"
   "action/ExecuteTask.action"

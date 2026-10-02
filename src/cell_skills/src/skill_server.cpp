@@ -413,8 +413,11 @@ void SkillServer::executeDetectObjects(
       auto request = std::make_shared<DetectService::Request>();
       request->object_class = goal->object_class;
       request->color = goal->color;
+      request->frames = goal->frames;
+      // each frame perception averages takes its own capture, so allow for every one of them
+      const double timeout = detect_timeout_ * std::max<int>(1, goal->frames);
       auto future = detect_client_->async_send_request(request);
-      if (future.wait_for(std::chrono::duration<double>(detect_timeout_)) !=
+      if (future.wait_for(std::chrono::duration<double>(timeout)) !=
         std::future_status::ready)
       {
         detect_client_->remove_pending_request(future);
@@ -470,7 +473,21 @@ void SkillServer::executePick(std::shared_ptr<rclcpp_action::ServerGoalHandle<Pi
       checkCancel(gh);
 
       feedback(gh, "descend", 0.4f);
-      moveLinear(grasp, "grasp descent");
+      try {
+        moveLinear(grasp, "grasp descent");
+      } catch (const SkillFailure & e) {
+        // The pre-grasp IK is seeded from wherever the arm was, and once in about 150 lab picks
+        // (a dish 0.68 m out, right after a place) it landed on a branch that the straight line
+        // down left after 30 of 110 mm. Solving the grasp pose first and the pre-grasp from
+        // that solution puts both ends on one branch.
+        if (e.code != SkillError::PLAN_FAILED) {
+          throw;
+        }
+        RCLCPP_WARN(get_logger(), "%s; approaching again on the grasp pose's IK branch", e.what());
+        moveAboveOnBranchOf(pregrasp, grasp, "pre-grasp on the grasp branch");
+        checkCancel(gh);
+        moveLinear(grasp, "grasp descent");
+      }
       checkCancel(gh);
 
       feedback(gh, "grasp", 0.6f);
@@ -871,7 +888,8 @@ void SkillServer::moveToPose(const Eigen::Isometry3d & tcp_pose, const std::stri
 }
 
 bool SkillServer::solveIk(
-  const geometry_msgs::msg::PoseStamped & target, std::map<std::string, double> & joints)
+  const geometry_msgs::msg::PoseStamped & target, std::map<std::string, double> & joints,
+  const std::map<std::string, double> & seed)
 {
   if (!ik_client_->wait_for_service(1s)) {
     return false;
@@ -887,6 +905,13 @@ bool SkillServer::solveIk(
     return false;
   }
   moveit::core::robotStateToRobotStateMsg(*current, request->ik_request.robot_state);
+  auto & seed_state = request->ik_request.robot_state.joint_state;
+  for (std::size_t i = 0; i < seed_state.name.size() && i < seed_state.position.size(); ++i) {
+    const auto it = seed.find(seed_state.name[i]);
+    if (it != seed.end()) {
+      seed_state.position[i] = it->second;
+    }
+  }
   auto future = ik_client_->async_send_request(request);
   if (future.wait_for(3s) != std::future_status::ready) {
     ik_client_->remove_pending_request(future);
@@ -904,6 +929,25 @@ bool SkillServer::solveIk(
     }
   }
   return joints.size() == active.size();
+}
+
+void SkillServer::moveAboveOnBranchOf(
+  const Eigen::Isometry3d & above, const Eigen::Isometry3d & below, const std::string & what)
+{
+  geometry_msgs::msg::PoseStamped target;
+  target.header.frame_id = planning_frame_;
+  target.pose = tf2::toMsg(below);
+  std::map<std::string, double> low, high;
+  if (!solveIk(target, low)) {
+    throw SkillFailure(SkillError::PLAN_FAILED, what + ": no IK solution below");
+  }
+  target.pose = tf2::toMsg(above);
+  if (!solveIk(target, high, low)) {
+    throw SkillFailure(SkillError::PLAN_FAILED, what + ": no IK solution above");
+  }
+  move_group_->setStartStateToCurrentState();
+  move_group_->setJointValueTarget(high);
+  planAndExecute(what);
 }
 
 void SkillServer::moveToNamed(const std::string & name)

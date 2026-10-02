@@ -52,6 +52,9 @@ public:
   {
     table_frame_ = declare_parameter<std::string>("table_frame", "table");
     frame_timeout_ = declare_parameter<double>("frame_timeout", 5.0);
+    frame_attempts_ = static_cast<int>(declare_parameter<int64_t>("frame_attempts", 3));
+    color_noise_ = declare_parameter<double>("color_noise", 0.0);  // std dev of a channel gain
+    rng_ = cv::RNG(static_cast<uint64_t>(declare_parameter<int64_t>("noise_seed", 1)));
     // This is added to camera_info's principal point. The MuJoCo plugin reports cx = W/2 and
     // cy = H/2, but with pixel centres at integer coordinates a symmetric frustum is centred at
     // W/2 - 0.5, so the plugin's cx and cy need a -0.5 px correction.
@@ -115,41 +118,51 @@ private:
 
   // True once a render has been requested and the colour and depth pair that arrives after it
   // is in hand, with the reason in `error` when not. Arrival is counted rather than stamps
-  // compared, because the plugin stamps a frame with the previous step's time.
+  // compared, because the plugin stamps a frame with the previous step's time. A render is asked
+  // for up to frame_attempts times: in a lab benchmark of 20 runs, 8 detections out of a few
+  // hundred got no matching pair within frame_timeout of their trigger, and since one failed look
+  // ends a watch, those runs left their vials unsorted, so a missing frame is asked for again.
   bool captureFrame(
     Image::ConstSharedPtr & color, Image::ConstSharedPtr & depth,
     CameraInfo::ConstSharedPtr & info, std::string & error)
   {
-    std::size_t color_before, depth_before;
-    {
-      std::lock_guard<std::mutex> lock(mutex_);
-      color_before = color_count_;
-      depth_before = depth_count_;
-    }
     if (!trigger_client_->wait_for_service(2s)) {
       error = "camera trigger service not available";
       return false;
     }
-    auto trigger = trigger_client_->async_send_request(
-      std::make_shared<std_srvs::srv::Trigger::Request>());
-    if (trigger.wait_for(2s) != std::future_status::ready || !trigger.get()->success) {
-      error = "camera trigger failed";
-      return false;
-    }
-    std::unique_lock<std::mutex> lock(mutex_);
-    const bool ok = frame_cv_.wait_for(
-      lock, std::chrono::duration<double>(frame_timeout_), [&]() {
-        return color_count_ > color_before && depth_count_ > depth_before && info_ &&
-               color_->header.stamp == depth_->header.stamp;
-      });
-    if (!ok) {
+    for (int attempt = 1; attempt <= frame_attempts_; ++attempt) {
+      std::size_t color_before, depth_before;
+      {
+        std::lock_guard<std::mutex> lock(mutex_);
+        color_before = color_count_;
+        depth_before = depth_count_;
+      }
+      auto trigger = trigger_client_->async_send_request(
+        std::make_shared<std_srvs::srv::Trigger::Request>());
+      if (trigger.wait_for(2s) != std::future_status::ready || !trigger.get()->success) {
+        error = "camera trigger failed";
+        continue;
+      }
+      std::unique_lock<std::mutex> lock(mutex_);
+      const bool ok = frame_cv_.wait_for(
+        lock, std::chrono::duration<double>(frame_timeout_), [&]() {
+          return color_count_ > color_before && depth_count_ > depth_before && info_ &&
+                 color_->header.stamp == depth_->header.stamp;
+        });
+      if (ok) {
+        color = color_;
+        depth = depth_;
+        info = info_;
+        return true;
+      }
       error = "no camera frame within " + std::to_string(frame_timeout_) + " s of the trigger";
-      return false;
+      if (attempt < frame_attempts_) {
+        RCLCPP_WARN(get_logger(), "%s (attempt %d of %d), triggering again", error.c_str(),
+          attempt, frame_attempts_);
+      }
     }
-    color = color_;
-    depth = depth_;
-    info = info_;
-    return true;
+    error += " after " + std::to_string(frame_attempts_) + " attempts";
+    return false;
   }
 
   void detect(const DetectObjects::Request & request, DetectObjects::Response & response)
@@ -157,10 +170,28 @@ private:
     const auto start = std::chrono::steady_clock::now();
     Image::ConstSharedPtr color_msg, depth_msg;
     CameraInfo::ConstSharedPtr info;
-    if (!captureFrame(color_msg, depth_msg, info, response.message)) {
-      RCLCPP_WARN(get_logger(), "Detection failed: %s", response.message.c_str());
-      return;
+    // Average `frames` captures, each tinted by a random colour gain. A rendered frame is exact,
+    // so color_noise stands in for a real camera's frame-to-frame white-balance drift, which
+    // tints the whole image at once: per-pixel noise would average out over a vial's hundred top
+    // pixels within one frame and never move a reading. Averaging is the second look a borderline
+    // reading gets, and it divides the drift by the square root of the frame count.
+    const int frames = std::max<int>(1, request.frames);
+    cv::Mat sum;
+    for (int i = 0; i < frames; ++i) {
+      if (!captureFrame(color_msg, depth_msg, info, response.message)) {
+        RCLCPP_WARN(get_logger(), "Detection failed: %s", response.message.c_str());
+        return;
+      }
+      cv::Mat frame;
+      cv_bridge::toCvShare(color_msg, "rgb8")->image.convertTo(frame, CV_32FC3);
+      if (color_noise_ > 0.0) {
+        cv::multiply(frame, cv::Scalar(1.0 + rng_.gaussian(color_noise_),
+          1.0 + rng_.gaussian(color_noise_), 1.0 + rng_.gaussian(color_noise_)), frame);
+      }
+      sum = sum.empty() ? frame : sum + frame;
     }
+    cv::Mat rgb;
+    sum.convertTo(rgb, CV_8UC3, 1.0 / frames);  // saturating, so noise cannot wrap around
 
     Eigen::Isometry3d table_T_camera;
     try {
@@ -171,7 +202,6 @@ private:
       return;
     }
 
-    const auto rgb = cv_bridge::toCvShare(color_msg, "rgb8")->image;
     const auto depth = cv_bridge::toCvShare(depth_msg, "32FC1")->image;
     const Intrinsics k{info->k[0], info->k[4], info->k[2] + principal_point_offset_,
       info->k[5] + principal_point_offset_};
@@ -209,6 +239,8 @@ private:
       o.size.y = d.size.y();
       o.size.z = d.size.z();
       o.confidence = static_cast<float>(d.confidence);
+      o.hue = static_cast<float>(d.hue);
+      o.inner_area = static_cast<float>(d.inner_area);
       if ((!request.object_class.empty() && request.object_class != o.object_class) ||
         (!request.color.empty() && request.color != o.color))
       {
@@ -242,6 +274,9 @@ private:
   Detector detector_;
   std::string table_frame_;
   double frame_timeout_;
+  int frame_attempts_ = 3;
+  double color_noise_ = 0.0;
+  cv::RNG rng_;
   double principal_point_offset_;
 
   std::mutex mutex_;

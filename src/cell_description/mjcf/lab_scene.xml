@@ -1,0 +1,50 @@
+<!--
+  This is the MuJoCo scene for the lab, the file mujoco_ros2_control loads when the cell is
+  launched with scene:=lab. It is scene.xml with the lab's furniture and samples in place of the
+  default workspace and objects: the robot, table, floor, lights and overhead camera are the
+  same, so everything calibrated against the default scene (the camera intrinsics, the robot's
+  kinematics) carries over. The racks, dispenser and waste bin come from lab_workspace.xml,
+  generated from config/lab/workspace.yaml, and the samples' visual twins from lab_objects.xml,
+  generated from config/lab/lab.yaml; the twins all start parked under the table until cell_lab
+  sets the samples out. The world frame is the `table` frame, as in scene.xml.
+-->
+<mujoco model="manipulation_cell_lab">
+  <include file="ur5e_2f85.xml"/>
+  <!-- racks, dispenser and waste bin, generated from config/lab/workspace.yaml -->
+  <include file="lab_workspace.xml"/>
+  <!-- every sample's visual twins, generated from config/lab/lab.yaml -->
+  <include file="lab_objects.xml"/>
+
+  <statistic center="0.4 0 0.2" extent="1.0"/>
+
+  <visual>
+    <headlight diffuse="0.45 0.45 0.45" ambient="0.25 0.25 0.25" specular="0 0 0"/>
+    <rgba haze="0.15 0.25 0.35 1"/>
+    <global azimuth="150" elevation="-25" offwidth="1280" offheight="960"/>
+  </visual>
+
+  <asset>
+    <texture type="skybox" builtin="gradient" rgb1="0.3 0.5 0.7" rgb2="0 0 0" width="512" height="3072"/>
+    <texture type="2d" name="groundplane" builtin="checker" mark="edge" rgb1="0.2 0.3 0.4"
+             rgb2="0.1 0.2 0.3" markrgb="0.8 0.8 0.8" width="300" height="300"/>
+    <material name="groundplane" texture="groundplane" texuniform="true" texrepeat="5 5" reflectance="0.1"/>
+    <material name="table" rgba="0.75 0.72 0.68 1"/>
+  </asset>
+
+  <worldbody>
+    <light pos="0.4 0 1.5" dir="0 0 -1" directional="true"/>
+    <geom name="floor" type="plane" pos="0 0 -0.75" size="0 0 0.05" material="groundplane"/>
+
+    <!-- the table, with its top surface at z = 0 and the robot mounted near the back edge -->
+    <geom name="table_top" type="box" pos="0.35 0 -0.02" size="0.55 0.65 0.02" material="table"/>
+    <geom name="table_leg_1" type="box" pos="-0.15 -0.6 -0.385" size="0.025 0.025 0.345" material="table"/>
+    <geom name="table_leg_2" type="box" pos="-0.15 0.6 -0.385" size="0.025 0.025 0.345" material="table"/>
+    <geom name="table_leg_3" type="box" pos="0.85 -0.6 -0.385" size="0.025 0.025 0.345" material="table"/>
+    <geom name="table_leg_4" type="box" pos="0.85 0.6 -0.385" size="0.025 0.025 0.345" material="table"/>
+
+    <!-- The overhead camera, looking straight down at the workspace. It is polled: cell_perception
+         triggers a frame when it needs one, and the resolution is set here on the camera. -->
+    <camera name="overhead" pos="0.45 0 1.0" xyaxes="0 -1 0 1 0 0" fovy="58" resolution="640 480"/>
+
+  </worldbody>
+</mujoco>

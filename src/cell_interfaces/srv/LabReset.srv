@@ -1,0 +1,10 @@
+# This sets out one protocol's samples in the lab scene, each in its start look and slot, with
+# their futures (reaction times, outcomes, doses per step) drawn from `seed`, so the same seed
+# always gives the same run. Every other twin is parked. cell_lab serves it as /lab/reset and the
+# lab benchmark calls it before each run.
+string protocol    # a protocol in cell_description/config/lab/lab.yaml, e.g. "assay"
+int32 seed
+---
+bool success
+string message
+string[] samples   # the samples set out

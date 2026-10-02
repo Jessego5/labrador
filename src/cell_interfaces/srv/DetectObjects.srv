@@ -2,6 +2,8 @@
 # detected in it. Empty filters match everything.
 string object_class
 string color
+uint8 frames          # frames to average before detecting (0 or 1 means one); more frames
+                      # average out camera noise, for a second look at a borderline reading
 ---
 bool success
 string message

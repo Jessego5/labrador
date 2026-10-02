@@ -174,6 +174,37 @@ std::vector<Detection> Detector::detect(
         -std::pow(best_size_err / 0.006, 2) - std::pow(best_height_err / 0.008, 2)) *
         (shape == best->shape ? 1.0 : 0.7);
 
+      // The hue of the top face as a number, for readings that a colour name is too coarse for
+      // (a test strip between positive and negative). OpenCV's H is half a degree, and the mean
+      // is taken on the circle because red sits on both sides of 0.
+      double hs = 0.0, hc = 0.0;
+      for (const auto & p : top) {
+        const double angle = 2.0 * hsv.at<cv::Vec3b>(p)[0] * M_PI / 180.0;
+        hs += std::sin(angle);
+        hc += std::cos(angle);
+      }
+      d.hue = std::fmod(std::atan2(hs, hc) * 180.0 / M_PI + 360.0, 360.0);
+
+      // The area of the type's inner colour inside its outline: a culture dish's colony, which
+      // grows across the dish's top. The outline is the blob's outer contour filled in, since the
+      // colony itself is a hole in the dish colour's mask.
+      if (!best->inner_color.empty()) {
+        const auto inner = std::find_if(config_.colors.begin(), config_.colors.end(),
+            [&](const ColorClass & c) {return c.name == best->inner_color;});
+        if (inner != config_.colors.end()) {
+          cv::Mat region = cv::Mat::zeros(rgb.size(), CV_8UC1);
+          cv::drawContours(region, std::vector<std::vector<cv::Point>>{contour}, 0, 255,
+            cv::FILLED);
+          cv::Mat inner_mask = cv::Mat::zeros(rgb.size(), CV_8UC1);
+          for (const auto & range : inner->ranges) {
+            cv::Mat part;
+            cv::inRange(hsv, range.lo, range.hi, part);
+            inner_mask |= part;
+          }
+          d.inner_area = cv::countNonZero(region & inner_mask) * m_per_px * m_per_px;
+        }
+      }
+
       double yaw = 0.0;
       if (best->shape == "box") {
         // the direction of one rectangle edge, measured on the table
@@ -189,7 +220,29 @@ std::vector<Detection> Detector::detect(
       detections.push_back(d);
     }
   }
-  return detections;
+
+  // A culture dish's colony is the dish's inner colour inside its outline, and once it has grown
+  // to a vial's width (30 mm across from the third stage) it also passed as a yellow vial standing
+  // there, so every growth run reported phantom vials. A blob of a dish type's inner colour whose
+  // centre lies on a detected dish is part of that dish.
+  auto inner_of = [&](const Detection & dish) -> const std::string * {
+      const auto t = std::find_if(config_.types.begin(), config_.types.end(),
+          [&](const ObjectType & type) {return type.name == dish.type;});
+      return t == config_.types.end() || t->inner_color.empty() ? nullptr : &t->inner_color;
+    };
+  std::vector<Detection> kept;
+  for (const auto & d : detections) {
+    const bool on_dish = std::any_of(detections.begin(), detections.end(),
+        [&](const Detection & dish) {
+          const std::string * inner = inner_of(dish);
+          return inner && *inner == d.color &&
+          (dish.top_center - d.top_center).head<2>().norm() < 0.5 * dish.footprint.x();
+        });
+    if (!on_dish) {
+      kept.push_back(d);
+    }
+  }
+  return kept;
 }
 
 cv::Mat Detector::drawDetections(const cv::Mat & rgb, const std::vector<Detection> & detections)
@@ -255,6 +308,10 @@ DetectorConfig loadDetectorConfig(const std::string & objects_file, const std::s
     for (const auto & entry : objects["types"]) {
       const std::string name = entry.first.as<std::string>();
       const YAML::Node & n = entry.second;
+      // a look the detector should not try to tell apart (the lab's per-stage twins)
+      if (n["perceive"] && !n["perceive"].as<bool>()) {
+        continue;
+      }
       const std::string where = "types." + name;
       ObjectType t;
       t.name = name;
@@ -262,6 +319,9 @@ DetectorConfig loadDetectorConfig(const std::string & objects_file, const std::s
       t.color = n["color"].as<std::string>();
       t.shape = n["shape"].as<std::string>();
       t.size = vec<3>(n["size"], where + ".size");
+      if (n["inner_color"]) {
+        t.inner_color = n["inner_color"].as<std::string>();
+      }
       config.types.push_back(t);
     }
 

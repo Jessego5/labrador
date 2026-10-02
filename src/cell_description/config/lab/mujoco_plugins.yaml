@@ -1,0 +1,30 @@
+# These are the MuJoCo plugin settings for the lab scene (scene:=lab), config/mujoco_plugins.yaml
+# with one change: the free-joint publisher runs at 10 Hz rather than 50. The lab has 20 visual
+# twins, and cell_lab, a Python node, decodes every message to know where the samples are; at
+# 50 Hz it took over 80% of a core even with the cell idle, which starved the software-rendered
+# camera until detections timed out. 10 Hz is still ample for telling whether a vial is in the
+# gripper.
+# These are the mujoco_ros2_control plugins that ros2_control_node loads next to the robot
+# hardware interface: a publisher of the ground-truth poses of the free bodies, and the overhead
+# camera. The camera is the expensive one, since rendering in the VM is software GL (llvmpipe),
+# so it renders only when asked.
+/**:
+  ros__parameters:
+    mujoco_plugins:
+      # ground-truth poses of every free body (the objects), used to score runs, and in part 3 as a
+      # stand-in for perception
+      free_joint_state_publisher:
+        type: "mujoco_ros2_control_plugins/FreeJointStatePublisherPlugin"
+        frame_id: ""   # a MuJoCo body name; empty means the MuJoCo world, which is the table frame
+        publish_rate: 10.0
+      # The overhead camera, rendered only on request through its trigger service, because
+      # software rendering is slow. Perception triggers one frame per detection.
+      mujoco_camera_plugin:
+        type: "mujoco_ros2_control_plugins/CameraPlugin"
+        camera_publish_rate: 2.0
+        overhead:
+          policy: polled
+          frame_name: overhead_camera_optical_frame
+          info_topic: /camera/camera_info
+          image_topic: /camera/image_raw
+          depth_topic: /camera/depth

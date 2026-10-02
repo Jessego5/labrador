@@ -1,0 +1,61 @@
+# This is the layout of the lab scene, the second table the cell can run (scene:=lab), in the
+# same format as config/workspace.yaml and read by the same code: cell_workspace for TF and the
+# skills' targets, build_workspace_mjcf.py for the MuJoCo geometry, and the executor for target
+# checks and drop spots. Samples start in rack_in, finished ones go to rack_done, failed ones to
+# waste, and the dispenser is a single-slot rack a vial sits in while it is dosed. Culture dishes
+# start on the table and are harvested into plate_rack; unreadable test tubes go to retest. Everything is
+# kept within the arm's comfortable reach (0.25 to 0.70 m from the base) and inside the overhead
+# camera's view. Regenerate the MJCF with python3 scripts/build_workspace_mjcf.py --config
+# config/lab/workspace.yaml --out mjcf/lab_workspace.xml after editing.
+frame: table
+
+trays:
+  # Vials waiting to react or to be dosed, in 36 mm pockets for the 30 mm vials. The columns run
+  # along y, the direction the fingers close in, and are 80 mm apart: at 60 mm the open fingers
+  # (85 mm between the pads, more outside them) came down on the neighbouring vial, which left the
+  # picked one hanging 15 to 20 degrees in the grip and tipping over wherever it was set down.
+  # Rows, along x, only need to keep the detector from joining neighbours: at 45 mm the walls
+  # between pockets were 11 mm, and its morphological close joined four vials into one 164 mm
+  # blob, so they are 60 mm apart.
+  rack_in:
+    origin: [0.40, -0.40, 0.02]
+    rows: 2
+    cols: 4
+    pitch: [0.06, 0.08]
+    slot_size: 0.036
+    slot_depth: 0.015
+  # vials that finished, filled in order
+  rack_done:
+    origin: [0.40, 0.12, 0.02]
+    rows: 2
+    cols: 4
+    pitch: [0.06, 0.08]
+    slot_size: 0.036
+    slot_depth: 0.015
+  # one pocket under the reagent dispenser; /lab/dispense doses whatever vial stands in it
+  dispenser:
+    origin: [0.62, 0.0, 0.02]
+    rows: 1
+    cols: 1
+    pitch: [0.06, 0.08]
+    slot_size: 0.036
+    slot_depth: 0.015
+
+  # Harvested culture dishes, three nests along table y. The tray is turned a quarter turn so
+  # that a place into it holds the dish with the fingers closing along x and the neighbouring
+  # nests stay clear of them. The nests are 100 mm across and 3 mm deep, wide and shallow, so
+  # the fingers around a 56 mm dish never meet the rim.
+  plate_rack:
+    origin: [0.27, -0.12, 0.02]
+    yaw: 1.5707963267948966
+    rows: 3
+    cols: 1
+    pitch: [0.12, 0.12]
+    slot_size: 0.10
+    slot_depth: 0.003
+
+bins:
+  # test tubes whose reading stayed borderline after a second look, set aside for a retest
+  retest: {center: [0.28, 0.30, 0.02], size: [0.12, 0.10, 0.08], spots: [2, 1]}
+  # failed samples; two drop spots along x so two vials can stand side by side
+  waste: {center: [0.62, -0.22, 0.02], size: [0.15, 0.12, 0.08], spots: [2, 1]}
