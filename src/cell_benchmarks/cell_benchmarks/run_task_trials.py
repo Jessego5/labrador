@@ -11,6 +11,13 @@ acceptance run over seeds 0-9 succeeded 10 of 10, with a slot error of about 1.9
 resting against a pocket wall, within the 2 mm clearance), a peg error of about 0.37 mm and about
 107 s per task. Run it, with cell.launch.py up, as
 ros2 run cell_benchmarks run_task_trials --seeds 0-9.
+
+With --faults it is the reliability benchmark: before each task cell_monitor is armed with the
+listed faults (nudge, slip, drop, fixture_shift, camera_noise, or all) at --rate per opportunity,
+seeded with the run's seed, and after it every injected fault is scored. A fault counts as
+recovered when the executor logged a successful recovery in the step and object it hit, or when
+nothing failed there and the run passed; a fault in a run that did not pass is never counted as
+recovered unless the executor recovered from it. --bag also records each run as a rosbag.
 """
 import argparse
 import json
@@ -25,7 +32,9 @@ import rclpy
 import yaml
 from ament_index_python.packages import get_package_share_directory
 from cell_interfaces.action import ExecuteTask, MoveToNamedPose
+from cell_interfaces.srv import StartRun
 from rclpy.action import ActionClient
+from std_srvs.srv import Trigger
 
 from cell_benchmarks.run_perception_trials import parse_seeds
 from cell_benchmarks.scene import SceneConfig
@@ -36,6 +45,46 @@ Z_TOLERANCE = 0.004         # m, resting on the pocket, bin or hole bottom
 PEG_XY_TOLERANCE = 0.0015   # m, the same as the part 5 insertion benchmark
 UNTOUCHED_TOLERANCE = 0.01  # m, how far an object the task must leave alone may move
 BIN_WALL = 0.005            # m, the same wall thickness as build_workspace_mjcf.py
+FAULT_KINDS = ["nudge", "slip", "drop", "fixture_shift", "camera_noise"]
+RUN_LEVEL_FAULTS = ("fixture_shift", "camera_noise")  # not tied to one step or object
+
+
+def score_faults(faults, events, run_ok):
+    """Each fault from cell_monitor with "recovered" set, against the executor's log events."""
+    scored = []
+    for f in faults:
+        if f["kind"] in RUN_LEVEL_FAULTS:
+            recovered = run_ok
+        else:
+            here = [e for e in events if e.get("step") == f.get("step")
+                    and (e.get("item") or "") == (f.get("item") or "")]
+            failed = any(e.get("event") == "recovery" or
+                         (e.get("event") == "skill" and e.get("result") == "FAILURE")
+                         for e in here)
+            recovered = any(e.get("event") == "recovered" for e in here) or \
+                (not failed and run_ok)
+        scored.append({**f, "recovered": bool(recovered)})
+    return scored
+
+
+def fault_cell(rec):
+    """'recovered/injected' for a run's line, or '-' without fault injection."""
+    if "faults" not in rec:
+        return "-"
+    return f"{sum(f['recovered'] for f in rec['faults'])}/{len(rec['faults'])}"
+
+
+def fault_list(rec):
+    """The run's faults in brief, as 'nudge+ drop- ', + recovered and - not."""
+    return "".join(f"{f['kind']}{'+' if f['recovered'] else '-'} " for f in rec.get("faults", []))
+
+
+def read_jsonl(path):
+    try:
+        with open(path) as f:
+            return [json.loads(line) for line in f if line.strip()]
+    except OSError:
+        return []
 
 
 def slot_center(tray, name):
@@ -109,6 +158,9 @@ class Checker:
 
         fx = self.ws["fixtures"]["peg_fixture"]
         hx, hy, hz = fx["hole_pose"][:3]
+        if "peg_fixture" in gt:
+            # where the fixture stands now, which a fixture_shift fault moves a few mm
+            hx, hy = gt["peg_fixture"].position.x, gt["peg_fixture"].position.y
         for name in self.names(**{"class": "peg"}):
             p = gt[name].position
             d = math.hypot(p.x - hx, p.y - hy)
@@ -137,7 +189,16 @@ def main():
     ap.add_argument("--timeout", type=float, default=900.0, help="s per run")
     ap.add_argument("--log-dir", default=os.path.expanduser("~/cell_ws/runs"))
     ap.add_argument("--min-success-rate", type=float, default=1.0)
+    ap.add_argument("--faults", default="", help="comma list of " + ", ".join(FAULT_KINDS) +
+                    ", or all; empty for none")
+    ap.add_argument("--rate", type=float, default=0.3, help="chance per fault opportunity")
+    ap.add_argument("--bag", action="store_true", help="record each run as a rosbag")
     args = ap.parse_args()
+    faults = FAULT_KINDS if args.faults == "all" else [f for f in args.faults.split(",") if f]
+    unknown = set(faults) - set(FAULT_KINDS)
+    if unknown:
+        sys.exit(f"unknown fault(s) {sorted(unknown)}; known: {', '.join(FAULT_KINDS)}")
+    monitored = bool(faults) or args.bag
     if args.task != "sort_and_insert":
         sys.exit("only sort_and_insert has ground-truth checks")
 
@@ -150,7 +211,8 @@ def main():
     hx, hy, _ = checker.ws["fixtures"]["peg_fixture"]["hole_pose"][:3]
     seeds = parse_seeds(args.seeds)
 
-    run_dir = os.path.join(args.log_dir, datetime.now().strftime("part6_%Y%m%d_%H%M%S"))
+    prefix = "part8" if monitored else "part6"
+    run_dir = os.path.join(args.log_dir, datetime.now().strftime(f"{prefix}_%Y%m%d_%H%M%S"))
     os.makedirs(run_dir, exist_ok=True)
     log_path = os.path.join(run_dir, "log.jsonl")
 
@@ -160,9 +222,15 @@ def main():
     cell.wait_until_ready()
     if not executor.wait_for_server(timeout_sec=60.0):
         sys.exit("/executor/execute_task not available (is cell.launch.py running?)")
+    start_run = cell.create_client(StartRun, "/monitor/start_run")
+    end_run = cell.create_client(Trigger, "/monitor/end_run")
+    if monitored and not start_run.wait_for_service(timeout_sec=30.0):
+        sys.exit("/monitor/start_run not available (cell_monitor starts with cell.launch.py)")
+    if faults:
+        print(f"faults: {', '.join(faults)} at rate {args.rate}")
     print(f"{len(seeds)} run(s) of {args.task}, log: {log_path}\n")
     print(f"{'seed':>4} {'outcome':>12} {'steps':>5} {'calls':>5} {'fail':>4} {'slot_mm':>7} "
-          f"{'peg_mm':>6} {'ok':>4} {'time':>6}  note")
+          f"{'peg_mm':>6} {'ok':>4} {'time':>6} {'faults':>6}  note")
 
     records = []
     with open(log_path, "w") as log:
@@ -174,6 +242,14 @@ def main():
                 cell.set_free_joints({"peg_fixture": (hx, hy, 0.0, 0.0)}, settle=0.2)
                 cell.set_object_poses(defaults if seed == 0 else scene.sample(seed), sizes)
                 start = cell.fresh_ground_truth()
+                if monitored:
+                    armed = cell.wait(start_run.call_async(StartRun.Request(
+                        run_id=f"seed{seed}", faults=faults, rate=args.rate, seed=seed,
+                        bag_dir=os.path.join(run_dir, "bags", f"seed{seed}") if args.bag
+                        else "")), 10.0)
+                    if not armed.success:
+                        raise RuntimeError(f"monitor: {armed.message}")
+                    cell.spin_for(0.5)  # the fixture shift lands before the task looks
 
                 handle = cell.wait(executor.send_goal_async(
                     ExecuteTask.Goal(task_file=args.task)), 10.0)
@@ -188,12 +264,28 @@ def main():
                 ok, problems, details = checker.check(cell.fresh_ground_truth(), start)
                 rec.update(scene_ok=ok, problems=problems, details=details)
                 rec["success"] = bool(result.success and ok)
+                executor_summary = {}
+                if result.run_dir:
+                    try:
+                        with open(os.path.join(result.run_dir, "summary.json")) as f:
+                            executor_summary = json.load(f)
+                    except (OSError, json.JSONDecodeError):
+                        pass
+                rec["recoveries"] = executor_summary.get("recoveries", 0)
+                rec["recovered"] = executor_summary.get("recovered", 0)
+                if monitored:
+                    ended = cell.wait(end_run.call_async(Trigger.Request()), 20.0)
+                    injected = json.loads(ended.message).get("faults", [])
+                    events = read_jsonl(os.path.join(result.run_dir, "log.jsonl"))
+                    rec["faults"] = score_faults(injected, events, rec["success"])
                 if not result.success:
                     rec["note"] = result.message
                 elif not ok:
                     rec["note"] = "; ".join(problems)
             except Exception as e:  # noqa: BLE001 - log and continue with the next seed
                 rec["note"] = str(e)
+                if monitored and end_run.service_is_ready():
+                    end_run.call_async(Trigger.Request())  # disarm before the next run
             rec["duration_s"] = round(time.monotonic() - t0, 1)
             records.append(rec)
             log.write(json.dumps(rec) + "\n")
@@ -204,8 +296,8 @@ def main():
             print(f"{seed:>4} {rec.get('outcome', '-'):>12} {rec.get('steps', '-'):>5} "
                   f"{rec.get('skill_calls', 0):>5} {rec.get('skill_failures', 0):>4} "
                   f"{(statistics.mean(slot) if slot else float('nan')):>7.2f} {peg:>6.2f} "
-                  f"{('ok' if rec['success'] else 'FAIL'):>4} {rec['duration_s']:>6.1f}  "
-                  f"{rec['note']}", flush=True)
+                  f"{('ok' if rec['success'] else 'FAIL'):>4} {rec['duration_s']:>6.1f} "
+                  f"{fault_cell(rec):>6}  {fault_list(rec)}{rec['note']}", flush=True)
 
     n = len(records)
     ok = sum(r["success"] for r in records)
@@ -222,7 +314,20 @@ def main():
         "peg_xy_error_mm": {"mean": statistics.mean(peg_err), "max": max(peg_err)}
         if peg_err else None,
         "mean_task_duration_s": statistics.mean(durations) if durations else None,
+        "recoveries": sum(r.get("recoveries", 0) for r in records),
+        "recovered": sum(r.get("recovered", 0) for r in records),
     }
+    if monitored:
+        scored = [f for r in records for f in r.get("faults", [])]
+        by_kind = {}
+        for f in scored:
+            k = by_kind.setdefault(f["kind"], {"injected": 0, "recovered": 0})
+            k["injected"] += 1
+            k["recovered"] += f["recovered"]
+        summary.update(faults=faults, rate=args.rate, faults_injected=len(scored),
+                       faults_recovered=sum(f["recovered"] for f in scored),
+                       fault_recovery_rate=sum(f["recovered"] for f in scored) / len(scored)
+                       if scored else None, faults_by_kind=by_kind)
     with open(os.path.join(run_dir, "summary.json"), "w") as f:
         json.dump(summary, f, indent=2)
 
@@ -236,6 +341,14 @@ def main():
         print(f"peg error:      mean {summary['peg_xy_error_mm']['mean']:.2f} mm")
     if durations:
         print(f"task duration:  mean {summary['mean_task_duration_s']:.1f} s")
+    if summary["recoveries"]:
+        print(f"recoveries:     {summary['recovered']} of {summary['recoveries']} skill failures "
+              f"recovered")
+    if monitored and summary["faults_injected"]:
+        kinds = ", ".join(f"{k} {v['recovered']}/{v['injected']}"
+                          for k, v in sorted(summary["faults_by_kind"].items()))
+        print(f"faults:         {summary['faults_recovered']}/{summary['faults_injected']} "
+              f"recovered ({100 * summary['fault_recovery_rate']:.0f}%): {kinds}")
     print(f"summary: {run_dir}/summary.json")
 
     cell.destroy_node()

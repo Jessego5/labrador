@@ -1,7 +1,8 @@
-// These are the tests for the task file format: the parser on the real sort_and_insert.yaml and
-// on its shorthands, the validation messages and their line numbers, the generated XML with its
-// SafeStop fallback, variable expansion and the filter encoding. They need no ROS and no robot.
-// Run them with colcon test --packages-select cell_executor.
+// These are the tests for the task file format: the parser on the real sort_and_insert.yaml and on
+// its shorthands, the validation messages and their line numbers, the generated XML with its
+// SafeStop fallback, the retries that wrap skills in Recover nodes, variable expansion and the
+// filter encoding. They need no ROS and no robot. Run them with colcon test --packages-select
+// cell_executor.
 #include <string>
 
 #include <gtest/gtest.h>
@@ -87,7 +88,7 @@ TEST(TaskParse, ReportsErrorsWithLineNumbers)
   EXPECT_ERROR("name: t\nsteps:\n  - jump: {}\n", "line 3: steps[0]: unknown step 'jump'");
   EXPECT_ERROR("name: t\nsteps:\n  - pick: {}\n", "missing required argument 'object'");
   EXPECT_ERROR("name: t\nsteps:\n  - pick: {object: a, speed: 2}\n",
-    "line 3: steps[0] (pick): unknown argument 'speed' (accepts: object, grasp)");
+    "line 3: steps[0] (pick): unknown argument 'speed' (accepts: object, grasp, retries)");
   EXPECT_ERROR("name: t\non_failure: retry\nsteps: [detect]\n", "line 2: on_failure: unknown");
   EXPECT_ERROR("name: t\nsteps:\n  - pick: {object: $item}\n",
     "$item can only be used inside for_each");
@@ -262,4 +263,21 @@ TEST(Conditions, RoundTrip)
   EXPECT_EQ(cell_executor::encodeCondition(c), "color=brown,green");
   EXPECT_EQ(cell_executor::decodeCondition("color=brown,green").at("color").size(), 2u);
   EXPECT_THROW(cell_executor::decodeCondition("color="), std::invalid_argument);
+}
+
+TEST(TaskParse, RetriesWrapSkillsInARecoverNode)
+{
+  // the task's retries reach every pick, place and insert, and a step can set its own
+  const Task task = parseTask(
+    "name: t\nretries: 2\nsteps:\n  - detect\n  - pick: red_cube_0\n"
+    "  - place: {target: bin_a, retries: 0}\n");
+  EXPECT_EQ(task.retries, 2);
+  EXPECT_EQ(task.steps[1].args.at("retries"), "2");
+  EXPECT_EQ(task.steps[2].args.at("retries"), "0");
+  EXPECT_EQ(task.steps[0].args.count("retries"), 0u);
+  const std::string xml = toBehaviorTreeXml(task);
+  EXPECT_NE(xml.find("<Recover attempts=\"3\" what=\"pick\">"), std::string::npos);
+  EXPECT_EQ(xml.find("what=\"place\""), std::string::npos);  // retries: 0, a plain Place
+  EXPECT_THROW(parseTask("name: t\nretries: 11\nsteps: [detect]\n"), TaskError);
+  EXPECT_THROW(parseTask("name: t\nsteps:\n  - pick: {object: a, retries: x}\n"), TaskError);
 }

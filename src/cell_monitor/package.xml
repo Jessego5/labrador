@@ -1,0 +1,31 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<!-- The run dependencies are what monitor_node talks to: the simulator's free-joint messages and
+     service for moving objects, the skills' action types for their feedback, the StartRun
+     service type, perception's parameters, TF for the TCP, rosbag2 for recording, and
+     cell_benchmarks for the layout rules that keep a moved object on free table. -->
+<package format="3">
+  <name>cell_monitor</name>
+  <version>0.1.0</version>
+  <description>Fault injection for the cell's benchmarks: moves, slips and drops objects, shifts the fixture and adds camera noise at the moments a skill is most exposed.</description>
+  <maintainer email="dev@example.com">cell developer</maintainer>
+  <license>Apache-2.0</license>
+
+  <exec_depend>cell_benchmarks</exec_depend>
+  <exec_depend>cell_description</exec_depend>
+  <exec_depend>cell_interfaces</exec_depend>
+  <exec_depend>mujoco_ros2_control_msgs</exec_depend>
+  <exec_depend>python3-yaml</exec_depend>
+  <exec_depend>rcl_interfaces</exec_depend>
+  <exec_depend>rclpy</exec_depend>
+  <exec_depend>ros2bag</exec_depend>
+  <exec_depend>rosbag2_storage_mcap</exec_depend>
+  <exec_depend>std_msgs</exec_depend>
+  <exec_depend>std_srvs</exec_depend>
+  <exec_depend>tf2_ros_py</exec_depend>
+  <test_depend>python3-pytest</test_depend>
+
+  <export>
+    <build_type>ament_python</build_type>
+  </export>
+</package>

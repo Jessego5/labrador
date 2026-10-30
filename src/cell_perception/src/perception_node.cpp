@@ -1,11 +1,13 @@
 // This is the perception node, which answers /perception/detect for the DetectObjects skill. On
-// each ~/detect request it triggers one frame from the overhead camera, runs the detector on it
-// and returns the objects, filtered by the class and colour the request asks for. The camera is
-// polled rather than streaming, so a detection always sees a frame rendered after the request,
-// and the skill moves the arm to its observe pose first so the robot is out of the view. The
-// objects also go out on ~/objects, as TF frames obj_<id>, and as an annotated image on
-// ~/debug_image when something subscribes. cell.launch.py starts it.
+// each ~/detect request it triggers one frame from the overhead camera, runs the detector on it and
+// returns the objects, filtered by the class and colour the request asks for. The camera is polled
+// rather than streaming, so a detection always sees a frame rendered after the request, and the
+// skill moves the arm to its observe pose first so the robot is out of the view. The objects also
+// go out on ~/objects, as TF frames obj_<id>, and as an annotated image on ~/debug_image when
+// something subscribes. color_noise can be changed while it runs, which is how cell_monitor injects
+// camera noise as a fault. cell.launch.py starts it.
 #include <algorithm>
+#include <atomic>
 #include <chrono>
 #include <condition_variable>
 #include <map>
@@ -54,6 +56,19 @@ public:
     frame_timeout_ = declare_parameter<double>("frame_timeout", 5.0);
     frame_attempts_ = static_cast<int>(declare_parameter<int64_t>("frame_attempts", 3));
     color_noise_ = declare_parameter<double>("color_noise", 0.0);  // std dev of a channel gain
+    // cell_monitor turns the noise on for the runs that inject it as a fault, and off again
+    param_handle_ = add_on_set_parameters_callback(
+      [this](const std::vector<rclcpp::Parameter> & params) {
+        rcl_interfaces::msg::SetParametersResult result;
+        result.successful = true;
+        for (const auto & p : params) {
+          if (p.get_name() == "color_noise") {
+            color_noise_ = p.as_double();
+            RCLCPP_INFO(get_logger(), "color_noise is now %.3f", color_noise_.load());
+          }
+        }
+        return result;
+      });
     rng_ = cv::RNG(static_cast<uint64_t>(declare_parameter<int64_t>("noise_seed", 1)));
     // This is added to camera_info's principal point. The MuJoCo plugin reports cx = W/2 and
     // cy = H/2, but with pixel centres at integer coordinates a symmetric frustum is centred at
@@ -184,9 +199,9 @@ private:
       }
       cv::Mat frame;
       cv_bridge::toCvShare(color_msg, "rgb8")->image.convertTo(frame, CV_32FC3);
-      if (color_noise_ > 0.0) {
-        cv::multiply(frame, cv::Scalar(1.0 + rng_.gaussian(color_noise_),
-          1.0 + rng_.gaussian(color_noise_), 1.0 + rng_.gaussian(color_noise_)), frame);
+      if (const double noise = color_noise_.load(); noise > 0.0) {
+        cv::multiply(frame, cv::Scalar(1.0 + rng_.gaussian(noise),
+          1.0 + rng_.gaussian(noise), 1.0 + rng_.gaussian(noise)), frame);
       }
       sum = sum.empty() ? frame : sum + frame;
     }
@@ -275,7 +290,8 @@ private:
   std::string table_frame_;
   double frame_timeout_;
   int frame_attempts_ = 3;
-  double color_noise_ = 0.0;
+  std::atomic<double> color_noise_{0.0};
+  rclcpp::node_interfaces::OnSetParametersCallbackHandle::SharedPtr param_handle_;
   cv::RNG rng_;
   double principal_point_offset_;
 

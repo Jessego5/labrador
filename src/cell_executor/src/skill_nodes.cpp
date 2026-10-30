@@ -1,8 +1,9 @@
 // This is the implementation of the five skill nodes. Each one builds its goal from the node's
 // ports and the executor's world model, and after the skill finishes it updates that model: what
-// was detected, what the gripper holds, which objects have been put away. The executor only
-// learns about the scene through these results, so a wrong update here shows up later as a pick
-// of something that is not there.
+// was detected, what the gripper holds, which objects have been put away, and which were lost to a
+// missed grasp or a drop and have to be found again. The executor only learns about the scene
+// through these results, so a wrong update here shows up later as a pick of something that is not
+// there.
 #include "cell_executor/skill_nodes.hpp"
 
 #include <cmath>
@@ -130,6 +131,10 @@ std::optional<std::string> PickNode::makeGoal(Goal & goal)
   if (!object) {
     return "no detected object '" + ref + "' (run detect first?)";
   }
+  if (ctx_->world.lost(object->id)) {
+    // a missed grasp or a drop left it somewhere the last look did not find
+    return object->id + " is lost: it was not seen again after the last failure";
+  }
   object_ = object->id;
   target_ = object->id;
   goal.object_id = object->id;
@@ -154,8 +159,14 @@ void PickNode::onResult(bool success, const Result * result, Json & record)
   if (success) {
     ctx_->world.held = object_;
     ctx_->world.unmarkHandled(object_);
-  } else if (ctx_->world.held == object_) {
-    ctx_->world.held.reset();
+  } else {
+    if (ctx_->world.held == object_) {
+      ctx_->world.held.reset();
+    }
+    // the fingers closed on nothing or it slipped out, so it is not where the world thought
+    if (record.value("error", Json()) == "GRASP_FAILED") {
+      ctx_->world.markLost(object_);
+    }
   }
   if (result) {
     record["gripper_position"] = round3(result->gripper_position);
@@ -182,6 +193,7 @@ BT::PortsList PlaceNode::providedPorts()
 std::optional<std::string> PlaceNode::makeGoal(Goal & goal)
 {
   const std::string wanted = expand(getInput<std::string>("target").value_or(""));
+  wanted_ = wanted;
   target_ = wanted;
   if (!ctx_->world.held) {
     return "not holding anything";
@@ -222,6 +234,19 @@ void PlaceNode::onResult(bool success, const Result * result, Json & record)
     }
     ctx_->world.markHandled(id);
     ctx_->world.held.reset();
+    return;
+  }
+  const std::string error = record.value("error", Json()).is_string() ?
+    record["error"].get<std::string>() : "";
+  if (error == "GRASP_FAILED" || error == "NOT_HOLDING") {
+    // it fell out on the way: nothing is held, and the object lies somewhere to be found again
+    ctx_->world.markLost(id);
+    ctx_->world.held.reset();
+  }
+  if ((error == "GRASP_FAILED" || error == "NOT_HOLDING" || error == "PLAN_FAILED") &&
+    target_ != wanted_)
+  {
+    ctx_->releaseTarget(wanted_);
   }
 }
 
@@ -267,6 +292,11 @@ void InsertNode::onResult(bool success, const Result * result, Json & record)
   }
   if (success && ctx_->world.held) {
     ctx_->world.markHandled(*ctx_->world.held);
+    ctx_->world.held.reset();
+  }
+  const auto error = record.value("error", Json());
+  if (!success && ctx_->world.held && (error == "GRASP_FAILED" || error == "NOT_HOLDING")) {
+    ctx_->world.markLost(*ctx_->world.held);
     ctx_->world.held.reset();
   }
 }

@@ -10,10 +10,13 @@
 # is the current for_each object and `$index` its 1-based number. bin_a has two drop spots,
 # which the executor fills in turn, because two cubes placed at the bin centre landed on each
 # other. The cylinder loop filters on `class: cylinder` rather than on the shape, because the
-# peg's shape is a cylinder too.
+# peg's shape is a cylinder too. retries: 2 gives every pick, place and insert two recoveries:
+# a pick that misses looks again and retries, and a place or insert whose object fell out picks
+# it up again where it landed (see "Recovery" in cell_executor/README.md).
 name: sort_and_insert
 description: Red cubes to bin_a, four cylinders to tray_1 C1..C4, peg into the fixture.
 on_failure: safe_stop          # or: skip_step, abort
+retries: 2
 steps:
   - detect: {}
   - for_each:

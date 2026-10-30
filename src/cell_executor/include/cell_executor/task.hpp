@@ -1,8 +1,9 @@
 // This is the task file format, a YAML list of steps (detect, pick, place, insert, move_to,
-// for_each) with a failure policy, parsed into a Task and then turned into the BehaviorTree.CPP
-// XML that the executor runs. It has no ROS in it, so the parser, the validation messages and the
-// generated XML are unit tested in milliseconds by test_task, and the executor node only has to
-// load the result. The format itself is described in cell_executor/README.md.
+// dispense, wait, for_each, watch, if, repeat_until) with a failure policy and the number of
+// recoveries each pick, place and insert gets, parsed into a Task and then turned into the
+// BehaviorTree.CPP XML that the executor runs. It has no ROS in it, so the parser, the validation
+// messages and the generated XML are unit tested in milliseconds by test_task, and the executor
+// node only has to load the result. The format itself is described in cell_executor/README.md.
 #pragma once
 
 #include <functional>
@@ -69,6 +70,7 @@ struct Task
   std::string name;
   std::string description;
   FailurePolicy on_failure = FailurePolicy::SafeStop;
+  int retries = 0;  // recoveries per pick, place and insert unless the step sets its own
   std::vector<Step> steps;
 };
 

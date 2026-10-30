@@ -128,8 +128,9 @@ number.
 
 ### Failure policy
 
-A step fails when its skill fails after the skill's own retries; Insert, for example, already
-searches and retries `max_attempts` times before it gives up.
+A step fails when its skill fails after the skill's own retries and the task's recoveries (see
+below); Insert, for example, already searches and retries `max_attempts` times before it gives
+up.
 
 | `on_failure` | Effect |
 |---|---|
@@ -137,8 +138,32 @@ searches and retries `max_attempts` times before it gives up.
 | `skip_step` | Log the failure and continue. Inside a `for_each` or `watch`, only that object is skipped. A task that skipped anything ends as `partial`, not `succeeded`. |
 | `abort` | Stop where the robot is, end as `failed` |
 
-There are no recovery subtrees yet. A failed step is not re-detected, retried or tried with
-another grasp before it is declared failed.
+### Recovery
+
+`retries: N` at the top of a task file gives every `pick`, `place` and `insert` N recoveries, and
+a step can set its own (`place: {target: bin_a, retries: 0}`). Each such step becomes a `Recover`
+node around its skill. When the skill fails with an error that another try can change, the
+recovery runs and the skill is tried again, up to N + 1 times in all:
+
+| Skill | Failures it recovers from | Recovery |
+|---|---|---|
+| `pick` | missed grasp (the object moved after it was seen), slip during the lift, no plan | look again, which also brings the arm back to the observe pose, then pick |
+| `place`, `insert` | the object fell out on the way | look again and pick it up where it landed, then place or insert |
+| `place`, `insert` | no plan, execution failure or jam while still holding | go home, then try again |
+
+An abort (`CANCELED`), an invalid goal, an unknown target and a skill server that is not ready
+fail at once, since another try cannot change them. A missed grasp or a drop marks the object
+lost, and the next look finds it by class and colour wherever it lies, under its own id, so the
+loop carries on with the same object; an object that merely moved up to 12 cm is found the same
+way without being lost. A place that never got there gives its bin spot or tray slot back, so a
+retried place into `bin_a` does not skip `bin_a/2` and wrap onto the first cube. Place and Insert
+check the gripper when they arrive, since a dropped object lets the fingers close to 0.8 rad;
+without the check a place went through its descent and release with nothing in the gripper and
+reported success. A grasp whose descent the controller stops, an open finger on a bin wall,
+is not left to the executor at all: looking again finds the same yaw and hits the same wall, so
+Pick goes back up and tries once more turned a quarter turn, which for a cube or a cylinder is
+the same grasp. Every recovery is logged (`recovery`, then `recovered` or `recovery_failed`),
+and `summary.json` counts them.
 
 ## The generated tree
 
@@ -174,6 +199,7 @@ policy. Under `safe_stop` the task's `Sequence` sits in a `Fallback` whose secon
 | `ObjectIs` | condition | the test of an `if`, inside BehaviorTree.CPP's `IfThenElse` |
 | `Dispense` | action | calls `/lab/dispense`; `wait` becomes the built-in `Sleep` |
 | `IsHolding` | condition | the gripper holds an object |
+| `Recover` | control | a skill and its recovery: on a recoverable failure, run the recovery and try the skill again, up to `attempts` |
 
 The executor loads every `.xml` file in `trees/` except files whose names start with '.'.
 AppleDouble `._*.xml` files that came along in a copy from macOS broke tree loading.
@@ -257,11 +283,54 @@ early harvest, and the readout 40 of 40 with no borderline tube guessed. A task 
 host, frames came more than 5 s late and readout runs skipped tubes, so run it on a quiet
 machine.
 
+## Reliability (part 8)
+
+`ros2 run cell_benchmarks run_task_trials --seeds 1-100` runs `sort_and_insert` without faults,
+and the same with `--faults all --rate 0.15 --bag` runs it against `cell_monitor`, which nudges,
+slips and drops objects, shifts the fixture and adds camera colour noise, and records a rosbag of
+every run. `ros2 run cell_benchmarks report` turns the two into `docs/reliability/report.md` and
+its plots. The task file asks for `retries: 2`.
+
+| | Without faults | With faults |
+|---|---|---|
+| Runs (seeds 1 to 100) | 100 | 100 |
+| Task success | 96% | 96% |
+| Faults injected | 0 | 450 |
+| Faults recovered | | 442 (98%) |
+| Skill failures recovered | 0 of 3 | 250 of 252 |
+| Slot placement error, mean | 1.85 mm | 1.86 mm |
+| Task duration, mean | 107 s | 142 s |
+
+Every nudge, slip and drop was recovered (82, 83 and 85 of them). The 8 faults counted as not
+recovered are the run-wide fixture shift and camera noise of the 4 failed runs, which count as
+recovered only when the run passes. Recovery costs time rather than accuracy: a run with faults
+took 35 s longer on average and placed its cylinders just as well.
+
+![task success](../../docs/reliability/success.png)
+
+![fault recovery by kind](../../docs/reliability/recovery.png)
+
+The 8 failed runs had three causes:
+
+- seeds 23, 55 and 93 in both halves: a grasp descent the controller stopped, and every retry
+  came down the same way. Pick now turns the grasp a quarter turn instead (see "Recovery"); after
+  that change the three seeds passed, run after the seed before each as in the benchmark, with
+  the turned grasp used once in each. The table above is from before the change.
+- seed 90 without faults and seed 68 with faults: every step succeeded, but a cylinder ended 11
+  to 31 mm from its slot. Placements are about 1.9 mm off and the pocket leaves 2 mm, so now and
+  then a cylinder lands on the rim and slides off after the release, and Place cannot see it.
+  Neither run fails every time; seed 22 did the same once in a later rerun. This is the main
+  failure left.
+- seed 17 with faults: the first move to the observe pose failed before anything was seen, and it
+  passed when run again.
+
 ## Tests
 
 `test_task` covers the parser, the validation messages, XML generation and variable expansion.
 `test_tree` runs generated trees with the real `Step`, `ForEachObject`, `WatchObjects`,
-`RepeatUntilObject`, `ObjectIs`, `IsHolding` and `SafeStop` nodes and stub skills, and checks the
-call order, the bin spots and tray slots, each failure policy, and the watch and titration loops
-against a scripted camera whose frames change from look to look. Both run without ROS or a
+`RepeatUntilObject`, `ObjectIs`, `IsHolding`, `Recover` and `SafeStop` nodes and stub skills, and
+checks the call order, the bin spots and tray slots, each failure policy, the recoveries (a missed
+pick, retries running out, errors not worth retrying, a drop picked up again where it fell, a
+place retried from home), and the watch and titration loops against a scripted camera whose
+frames change from look to look. Both run without ROS or a
 robot.

@@ -425,6 +425,10 @@ private:
       message << ", " << ctx->steps_skipped << " step(s) and " << ctx->items_skipped
               << " object(s) skipped";
     }
+    if (ctx->recoveries) {
+      message << ", recovered from " << ctx->recovered << " of " << ctx->recoveries
+              << " failure(s)";
+    }
     if (ctx->failed_step) {
       message << "; stopped at step " << ctx->failed_step;
       if (!ctx->last_error.empty()) {
@@ -440,6 +444,7 @@ private:
       {"steps_total", result.steps_total}, {"steps_succeeded", result.steps_succeeded},
       {"steps_skipped", result.steps_skipped}, {"objects_skipped", ctx->items_skipped},
       {"skill_calls", result.skill_calls}, {"skill_failures", result.skill_failures},
+      {"recoveries", ctx->recoveries}, {"recovered", ctx->recovered},
       {"failed_step", ctx->failed_step}, {"duration_s", std::round(duration * 100.0) / 100.0}};
     ctx->log({{"event", "end"}, {"outcome", result.outcome}, {"message", result.message}});
     std::ofstream(run_dir / "summary.json") << summary.dump(2) << "\n";

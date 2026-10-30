@@ -8,12 +8,13 @@ them and makes the commanded pose compliant. The skills switch it in, in place o
 `joint_trajectory_controller`, for compliant placing and for insertion.
 
 ```
-wrist F/T sensor ──► zero (at activation) ─► low-pass ─► deadband ─► clamp ──┐
-                                                                             ▼
-reference pose ──► rate limit ──► M (a) + D (v − v_ref) + K (x_c ⊖ x_ref) = F_ext
-(~/target_pose)                                          │
-                                                         ▼  compliant pose x_c
-                          damped least-squares IK step (KDL) ─► joint position commands
+wrist F/T sensor --> zero (at activation) --> low-pass --> deadband --> clamp --+
+                                                                                |
+                                                                                v
+reference pose --> rate limit --> M (a) + D (v - v_ref) + K (x_c - x_ref) = F_ext
+(~/target_pose)                                         |
+                                                        v  compliant pose x_c
+                       damped least-squares IK step (KDL) --> joint position commands
 ```
 
 In free space the compliant pose `x_c` follows the reference. In contact it settles where the

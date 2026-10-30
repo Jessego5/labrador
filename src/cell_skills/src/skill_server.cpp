@@ -1,10 +1,10 @@
-// This is the implementation of the skill server declared in skill_server.hpp: the setup that
-// waits for move_group and the controllers, the five skills, and the motion, gripper and
-// compliance primitives the skills are built from. Every skill runs in a thread of its own and
-// goes through one wrapper, run(), so they all succeed, fail and report in the same way, with a
-// SkillError code and a message. Several of the rules in here were learnt in simulation, the
-// release that opens only part way, the IK goal instead of a pose goal, the gripper's settle
-// check, and the comments next to them say what went wrong.
+// This is the implementation of the skill server declared in skill_server.hpp: the setup that waits
+// for move_group and the controllers, the five skills, and the motion, gripper and compliance
+// primitives the skills are built from. Every skill runs in a thread of its own and goes through
+// one wrapper, run(), so they all succeed, fail and report in the same way, with a SkillError code
+// and a message. Several of the rules in here were learnt in simulation, the release that opens
+// only part way, the IK goal instead of a pose goal, the gripper's settle check, the arrival check
+// that catches an object dropped on the way, and the comments next to them say what went wrong.
 #include "cell_skills/skill_server.hpp"
 
 #include <algorithm>
@@ -76,7 +76,8 @@ SkillServer::SkillServer(const rclcpp::NodeOptions & options)
   // for grasp_strategy "insert", hold this far below the top so the rest is free to go in a hole
   insert_grasp_depth_ = param("insert_grasp_depth", 0.012);
 
-  trajectory_controller_ = param<std::string>("trajectory_controller", "joint_trajectory_controller");
+  trajectory_controller_ =
+    param<std::string>("trajectory_controller", "joint_trajectory_controller");
   compliance_controller_ = param<std::string>("compliance_controller", "compliance_controller");
   compliance_stiffness_z_ = param("compliance_stiffness_z", 400.0);  // must match the controller
   contact_force_ = param("contact_force", 2.5);          // N, axial force that counts as contact
@@ -263,7 +264,8 @@ void SkillServer::addCollisionObjects()
   // boxes do not get in their way.
   for (const auto & t : workspace_.trays) {
     const auto fp = t.footprint();
-    box(t.name, {0.5 * (fp.min.x() + fp.max.x()), 0.5 * (fp.min.y() + fp.max.y()), 0.5 * t.origin.z()},
+    box(t.name,
+      {0.5 * (fp.min.x() + fp.max.x()), 0.5 * (fp.min.y() + fp.max.y()), 0.5 * t.origin.z()},
       {fp.max.x() - fp.min.x(), fp.max.y() - fp.min.y(), t.origin.z()});
   }
   // bins are open boxes, a floor and four walls as in the MJCF, so the fingers may go inside
@@ -272,10 +274,11 @@ void SkillServer::addCollisionObjects()
     const Eigen::Vector3d c = b.center;
     const Eigen::Vector3d s = b.size;
     box(b.name + "_floor", {c.x(), c.y(), 0.5 * c.z()}, {s.x(), s.y(), c.z()});
-    box(b.name + "_wall_xn", {c.x() - 0.5 * (s.x() - wall), c.y(), 0.5 * s.z()}, {wall, s.y(), s.z()});
-    box(b.name + "_wall_xp", {c.x() + 0.5 * (s.x() - wall), c.y(), 0.5 * s.z()}, {wall, s.y(), s.z()});
-    box(b.name + "_wall_yn", {c.x(), c.y() - 0.5 * (s.y() - wall), 0.5 * s.z()}, {s.x(), wall, s.z()});
-    box(b.name + "_wall_yp", {c.x(), c.y() + 0.5 * (s.y() - wall), 0.5 * s.z()}, {s.x(), wall, s.z()});
+    const double dx = 0.5 * (s.x() - wall), dy = 0.5 * (s.y() - wall), h = 0.5 * s.z();
+    box(b.name + "_wall_xn", {c.x() - dx, c.y(), h}, {wall, s.y(), s.z()});
+    box(b.name + "_wall_xp", {c.x() + dx, c.y(), h}, {wall, s.y(), s.z()});
+    box(b.name + "_wall_yn", {c.x(), c.y() - dy, h}, {s.x(), wall, s.z()});
+    box(b.name + "_wall_yp", {c.x(), c.y() + dy, h}, {s.x(), wall, s.z()});
   }
   for (const auto & f : workspace_.fixtures) {
     const auto fp = f.footprint();
@@ -338,7 +341,8 @@ void SkillServer::run(
     result->error.code = SkillError::EXECUTION_FAILED;
     result->message = e.what();
   }
-  const double secs = std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
+  const double secs =
+    std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
 
   // Free the server before reporting the result. A client may send its next goal as soon as it
   // has the result, and that goal would be rejected as busy if the flag were still set.
@@ -460,8 +464,8 @@ void SkillServer::executePick(std::shared_ptr<rclcpp_action::ServerGoalHandle<Pi
       }
       const double yaw = foldYaw(yawOf(object.linear()));
       const Eigen::Vector3d xy(object.translation().x(), object.translation().y(), 0.0);
-      const Eigen::Isometry3d grasp = topDownPose(xy + Eigen::Vector3d(0, 0, grasp_z), yaw);
-      const Eigen::Isometry3d pregrasp =
+      Eigen::Isometry3d grasp = topDownPose(xy + Eigen::Vector3d(0, 0, grasp_z), yaw);
+      Eigen::Isometry3d pregrasp =
         topDownPose(xy + Eigen::Vector3d(0, 0, grasp_z + approach_height_), yaw);
 
       feedback(gh, "open", 0.0f);
@@ -474,19 +478,24 @@ void SkillServer::executePick(std::shared_ptr<rclcpp_action::ServerGoalHandle<Pi
 
       feedback(gh, "descend", 0.4f);
       try {
-        moveLinear(grasp, "grasp descent");
+        descendToGrasp(grasp, pregrasp);
       } catch (const SkillFailure & e) {
-        // The pre-grasp IK is seeded from wherever the arm was, and once in about 150 lab picks
-        // (a dish 0.68 m out, right after a place) it landed on a branch that the straight line
-        // down left after 30 of 110 mm. Solving the grasp pose first and the pre-grasp from
-        // that solution puts both ends on one branch.
-        if (e.code != SkillError::PLAN_FAILED) {
+        // In 3 of 100 runs an open finger came down on a bin wall or the next cylinder and the
+        // controller stopped the descent. Every retry looked again, got the same yaw and hit the
+        // same thing. Turned a quarter turn the fingers come down on the other two sides, which
+        // for an object that is square or round from above is the same grasp.
+        const bool turnable = std::abs(size.x - size.y) < 0.002;
+        if (e.code != SkillError::EXECUTION_FAILED || !turnable) {
           throw;
         }
-        RCLCPP_WARN(get_logger(), "%s; approaching again on the grasp pose's IK branch", e.what());
-        moveAboveOnBranchOf(pregrasp, grasp, "pre-grasp on the grasp branch");
+        const double turned = yaw > 0.0 ? yaw - M_PI / 2.0 : yaw + M_PI / 2.0;
+        RCLCPP_WARN(
+          get_logger(), "%s; trying again turned to %.0f deg", e.what(), turned * 180.0 / M_PI);
+        grasp = topDownPose(xy + Eigen::Vector3d(0, 0, grasp_z), turned);
+        pregrasp = topDownPose(xy + Eigen::Vector3d(0, 0, grasp_z + approach_height_), turned);
+        moveToPose(pregrasp, "turned pre-grasp");
         checkCancel(gh);
-        moveLinear(grasp, "grasp descent");
+        descendToGrasp(grasp, pregrasp);
       }
       checkCancel(gh);
 
@@ -540,7 +549,8 @@ void SkillServer::executePlace(std::shared_ptr<rclcpp_action::ServerGoalHandle<P
       }
       const double yaw = foldYaw(yawOf(target.linear()));
       const Eigen::Vector3d xy(target.translation().x(), target.translation().y(), 0.0);
-      const double place_z = target.translation().z() + held_->tcp_above_bottom + release_clearance_;
+      const double place_z =
+        target.translation().z() + held_->tcp_above_bottom + release_clearance_;
       const Eigen::Isometry3d place = topDownPose(xy + Eigen::Vector3d(0, 0, place_z), yaw);
       const Eigen::Isometry3d preplace =
         topDownPose(xy + Eigen::Vector3d(0, 0, place_z + approach_height_), yaw);
@@ -548,6 +558,7 @@ void SkillServer::executePlace(std::shared_ptr<rclcpp_action::ServerGoalHandle<P
       feedback(gh, "approach", 0.0f);
       moveToPose(preplace, "pre-place");
       checkCancel(gh);
+      checkStillHolding("the place");
 
       Eigen::Isometry3d released_at = place;
       double opened = 0.0;
@@ -559,7 +570,7 @@ void SkillServer::executePlace(std::shared_ptr<rclcpp_action::ServerGoalHandle<P
         Eigen::Isometry3d hover = place;
         hover.translation().z() += compliant_place_height_;
         feedback(gh, "descend", 0.4f);
-        moveLinear(hover, "place descent");
+        moveDown(hover, preplace, "place descent");
         checkCancel(gh);
         ComplianceScope compliance(*this);
         feedback(gh, "contact", 0.55f);
@@ -593,7 +604,7 @@ void SkillServer::executePlace(std::shared_ptr<rclcpp_action::ServerGoalHandle<P
         compliance.close();
       } else {
         feedback(gh, "descend", 0.4f);
-        moveLinear(place, "place descent");
+        moveDown(place, preplace, "place descent");
         checkCancel(gh);
         feedback(gh, "release", 0.7f);
         opened = commandGripper(release_to);
@@ -683,7 +694,9 @@ void SkillServer::executeInsert(std::shared_ptr<rclcpp_action::ServerGoalHandle<
       feedback(gh, "approach", 0.0f);
       moveToPose(tcpAt(nominal, start_z + approach_height_), "pre-insert");
       checkCancel(gh);
-      moveLinear(tcpAt(nominal, start_z), "insert approach");
+      checkStillHolding("the fixture");
+      moveDown(tcpAt(nominal, start_z), tcpAt(nominal, start_z + approach_height_),
+        "insert approach");
       checkCancel(gh);
 
       ComplianceScope compliance(*this);
@@ -745,7 +758,8 @@ void SkillServer::executeInsert(std::shared_ptr<rclcpp_action::ServerGoalHandle<
               s = tick();
             }
             s = compliantDescend(
-              gh, tcpAt(xy, lift_z), contact_z - press_dz, search_press_speed_, contact_force_, 1.0);
+              gh, tcpAt(xy, lift_z), contact_z - press_dz, search_press_speed_, contact_force_,
+              1.0);
             max_seen = std::max(max_seen, s.force.z());
             best_depth = std::max(best_depth, depthOf(s));
             entered = depthOf(s) - contact_depth > insert_drop_threshold_;
@@ -789,7 +803,8 @@ void SkillServer::executeInsert(std::shared_ptr<rclcpp_action::ServerGoalHandle<
           if (stalled && depth >= depth_goal - insert_bottom_tolerance_ &&
             s.force.z() > 0.8 * press_force_ && s.force.z() < max_force)
           {
-            RCLCPP_INFO(get_logger(), "Insert: bottomed out at %.1f mm estimated depth", 1000 * depth);
+            RCLCPP_INFO(
+              get_logger(), "Insert: bottomed out at %.1f mm estimated depth", 1000 * depth);
             seated = true;
             break;
           }
@@ -834,7 +849,8 @@ void SkillServer::executeInsert(std::shared_ptr<rclcpp_action::ServerGoalHandle<
       }
       held_.reset();
       sendComplianceTarget(tcpAt(center, start_z));
-      for (int i = 0; i < 300 && complianceTick(gh).pose.translation().z() < start_z - 0.002; ++i) {}
+      for (int i = 0; i < 300 && complianceTick(gh).pose.translation().z() < start_z - 0.002;
+        ++i) {}
       compliance.close();
 
       feedback(gh, "retreat", 0.95f);
@@ -881,7 +897,8 @@ void SkillServer::moveToPose(const Eigen::Isometry3d & tcp_pose, const std::stri
     RCLCPP_DEBUG(get_logger(), "%s: planning to IK solution%s", what.c_str(), values.c_str());
     move_group_->setJointValueTarget(joints);
   } else {
-    RCLCPP_WARN(get_logger(), "%s: no collision-free IK solution; planning to the pose", what.c_str());
+    RCLCPP_WARN(
+      get_logger(), "%s: no collision-free IK solution; planning to the pose", what.c_str());
     move_group_->setPoseTarget(target, tcp_link_);
   }
   planAndExecute(what);
@@ -950,6 +967,22 @@ void SkillServer::moveAboveOnBranchOf(
   planAndExecute(what);
 }
 
+void SkillServer::checkStillHolding(const std::string & where)
+{
+  // An object that falls out on the way lets the fingers close the rest of the way, to 0.8 rad,
+  // so the same threshold that tells a missed grasp tells a drop. Without this check a place
+  // went through its whole descent and release with nothing in the gripper and reported success.
+  const double position = gripperPosition();
+  if (position <= grasp_closed_threshold_) {
+    return;
+  }
+  held_.reset();
+  commandGripper(gripper_open_);
+  throw SkillFailure(
+    SkillError::GRASP_FAILED,
+    "the object fell out on the way to " + where + fmt(" (gripper closed to %.3f rad)", position));
+}
+
 void SkillServer::moveToNamed(const std::string & name)
 {
   const auto names = move_group_->getNamedTargets();
@@ -980,6 +1013,47 @@ void SkillServer::moveLinear(const Eigen::Isometry3d & tcp_pose, const std::stri
     throw SkillFailure(
       SkillError::EXECUTION_FAILED,
       what + " failed (MoveIt error " + std::to_string(executed.val) + ")");
+  }
+}
+
+void SkillServer::moveDown(
+  const Eigen::Isometry3d & tcp_pose, const Eigen::Isometry3d & above, const std::string & what)
+{
+  try {
+    moveLinear(tcp_pose, what);
+  } catch (const SkillFailure & e) {
+    if (e.code != SkillError::EXECUTION_FAILED) {
+      throw;
+    }
+    // A descent the controller stopped part way (MoveIt error -4, once in 100 runs, on a pick)
+    // left the arm against the scene, where MoveIt refuses every plan whose start is in
+    // collision. The recovery's look, the safe stop and the 77 runs after it all failed with "no
+    // plan", so go back up first; the retreat is a straight line without collision checks.
+    try {
+      moveLinear(above, "retreat after the " + what);
+    } catch (const SkillFailure & retreat) {
+      RCLCPP_ERROR(get_logger(), "%s; the retreat failed too: %s", e.what(), retreat.what());
+    }
+    throw;
+  }
+}
+
+void SkillServer::descendToGrasp(
+  const Eigen::Isometry3d & grasp, const Eigen::Isometry3d & above)
+{
+  try {
+    moveDown(grasp, above, "grasp descent");
+  } catch (const SkillFailure & e) {
+    // The pre-grasp IK is seeded from wherever the arm was, and once in about 150 lab picks
+    // (a dish 0.68 m out, right after a place) it landed on a branch that the straight line
+    // down left after 30 of 110 mm. Solving the grasp pose first and the pre-grasp from
+    // that solution puts both ends on one branch.
+    if (e.code != SkillError::PLAN_FAILED) {
+      throw;
+    }
+    RCLCPP_WARN(get_logger(), "%s; approaching again on the grasp pose's IK branch", e.what());
+    moveAboveOnBranchOf(above, grasp, "pre-grasp on the grasp branch");
+    moveDown(grasp, above, "grasp descent");
   }
 }
 

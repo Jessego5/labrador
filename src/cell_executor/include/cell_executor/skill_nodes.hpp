@@ -180,7 +180,8 @@ private:
             retry_at_ = t + 0.25;
             return BT::NodeStatus::RUNNING;
           }
-          return finish(false, SkillError::NOT_READY, "goal rejected (skill server busy?)", nullptr);
+          return finish(
+            false, SkillError::NOT_READY, "goal rejected (skill server busy?)", nullptr);
         }
         result_future_ = client_->async_get_result(handle_);
         stage_ = Stage::Running;
@@ -299,6 +300,7 @@ private:
     }
     ++ctx_->skill_failures;
     ctx_->last_error = skill_ + ": " + errorName(code) + (message.empty() ? "" : ", " + message);
+    ctx_->last_error_code = errorName(code);
     ctx_->warn(ctx_->last_error);
     return BT::NodeStatus::FAILURE;
   }
@@ -363,6 +365,7 @@ public:
 private:
   std::optional<std::string> makeGoal(Goal & goal) override;
   void onResult(bool success, const Result * result, Json & record) override;
+  std::string wanted_;  // the target as written, before a slot or spot was allocated
 };
 
 // Inserts the held peg. Ports: target (the fixture), max_force and max_attempts (0 for either

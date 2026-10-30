@@ -1,11 +1,14 @@
 // This is the implementation of the run's shared state: the world model the skill nodes update,
-// the drop-spot allocation for bins, and the run log. The progress is behind a mutex because
-// /executor/state reads it from a ROS thread while the tree ticks on another.
+// with its two matching passes (near the old place, then by class and colour for objects that moved
+// or were lost), the slot and drop-spot allocation for trays and bins, which a place that never got
+// there gives back, and the run log. The progress is behind a mutex because /executor/state reads
+// it from a ROS thread while the tree ticks on another.
 #include "cell_executor/run_context.hpp"
 
 #include <algorithm>
 #include <cctype>
 #include <cmath>
+#include <limits>
 
 namespace cell_executor
 {
@@ -51,46 +54,92 @@ std::vector<World::Change> World::updateDetections(
 {
   std::vector<Change> changes;
   std::vector<bool> seen(objects_.size(), false);
-  std::vector<DetectedObject> added;
+  std::vector<int> match(objects.size(), -1);  // detection -> known object
+  const auto dist = [](const DetectedObject & a, const DetectedObject & b) {
+      const auto & p = a.pose.pose.position;
+      const auto & q = b.pose.pose.position;
+      return std::hypot(p.x - q.x, p.y - q.y);
+    };
+
+  // first pass: the nearest known object of the same class within match_radius, not held, not
+  // lost and not matched yet; colour may differ, since that is how a change is seen
+  for (std::size_t d = 0; d < objects.size(); ++d) {
+    double best_dist = match_radius;
+    for (std::size_t i = 0; i < objects_.size(); ++i) {
+      const auto & k = objects_[i];
+      if (seen[i] || k.object_class != objects[d].object_class || held == k.id || lost(k.id)) {
+        continue;
+      }
+      const double dd = dist(k, objects[d]);
+      if (dd <= best_dist) {
+        match[d] = static_cast<int>(i);
+        best_dist = dd;
+      }
+    }
+    if (match[d] >= 0) {
+      seen[match[d]] = true;
+    }
+  }
+
+  // second pass: known objects still unseen take the nearest unmatched detection of the same
+  // class and colour, lost ones first and at any distance, the others within relocate_radius
+  std::vector<std::size_t> order;
+  for (std::size_t i = 0; i < objects_.size(); ++i) {
+    if (!seen[i] && held != objects_[i].id && !handled(objects_[i].id)) {
+      order.push_back(i);
+    }
+  }
+  std::stable_sort(order.begin(), order.end(), [&](std::size_t a, std::size_t b) {
+      return lost(objects_[a].id) && !lost(objects_[b].id);
+    });
+  for (const std::size_t i : order) {
+    const auto & k = objects_[i];
+    int best = -1;
+    double best_dist = lost(k.id) ? std::numeric_limits<double>::infinity() : relocate_radius;
+    for (std::size_t d = 0; d < objects.size(); ++d) {
+      if (match[d] >= 0 || objects[d].object_class != k.object_class ||
+        objects[d].color != k.color)
+      {
+        continue;
+      }
+      const double dd = dist(k, objects[d]);
+      if (dd <= best_dist) {
+        best = static_cast<int>(d);
+        best_dist = dd;
+      }
+    }
+    if (best >= 0) {
+      match[best] = static_cast<int>(i);
+      seen[i] = true;
+    }
+  }
+
   std::set<std::string> taken;
   for (const auto & o : objects_) {
     taken.insert(o.id);
   }
-  for (DetectedObject d : objects) {
-    // the nearest known object of the same class, not held and not matched yet
-    int best = -1;
-    double best_dist = match_radius;
-    for (std::size_t i = 0; i < objects_.size(); ++i) {
-      const auto & k = objects_[i];
-      if (seen[i] || k.object_class != d.object_class || held == k.id) {
-        continue;
+  std::vector<DetectedObject> added;
+  for (std::size_t d = 0; d < objects.size(); ++d) {
+    DetectedObject o = objects[d];
+    if (match[d] >= 0) {
+      DetectedObject & k = objects_[match[d]];
+      if (k.color != o.color) {
+        changes.push_back({k.id, k.color, o.color});
       }
-      const auto & a = k.pose.pose.position;
-      const auto & b = d.pose.pose.position;
-      const double dist = std::hypot(a.x - b.x, a.y - b.y);
-      if (dist <= best_dist) {
-        best = static_cast<int>(i);
-        best_dist = dist;
-      }
-    }
-    if (best >= 0) {
-      DetectedObject & k = objects_[best];
-      seen[best] = true;
-      if (k.color != d.color) {
-        changes.push_back({k.id, k.color, d.color});
-      }
-      d.id = k.id;
-      k = d;
+      o.id = k.id;
+      lost_.erase(k.id);
+      k = o;
     } else {
-      d.id = uniqueId(d.id, taken);
-      taken.insert(d.id);
-      added.push_back(d);
+      o.id = uniqueId(o.id, taken);
+      taken.insert(o.id);
+      added.push_back(o);
     }
   }
   std::vector<DetectedObject> kept;
   for (std::size_t i = 0; i < objects_.size(); ++i) {
     const auto & k = objects_[i];
-    if (seen[i] || !matches(k, filter) || held == k.id || handled(k.id)) {
+    // a lost object that was not seen again stays known, so a later look can still find it
+    if (seen[i] || !matches(k, filter) || held == k.id || handled(k.id) || lost(k.id)) {
       kept.push_back(k);
     }
   }
@@ -257,6 +306,14 @@ std::string RunContext::allocateTarget(const std::string & target)
     return target + "/" + cell_workspace::slotName(n / tray.cols, n % tray.cols);
   }
   return target;
+}
+
+void RunContext::releaseTarget(const std::string & target)
+{
+  const auto it = bin_fill_.find(target);
+  if (it != bin_fill_.end() && it->second > 0) {
+    --it->second;
+  }
 }
 
 void RunContext::updateProgress(const std::function<void(Progress &)> & update)

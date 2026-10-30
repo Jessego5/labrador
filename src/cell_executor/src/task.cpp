@@ -1,7 +1,8 @@
 // This is the task parser and the tree generator. The parser checks a task file against a small
-// schema per step kind and fails with the file's line number, so mistakes in a task file are
-// caught before the robot moves. The generator writes the BehaviorTree.CPP v4 XML for a parsed
-// task as plain text, which is also saved next to each run as tree.xml.
+// schema per step kind and fails with the file's line number, so mistakes in a task file are caught
+// before the robot moves. The generator writes the BehaviorTree.CPP v4 XML for a parsed task as
+// plain text, which is also saved next to each run as tree.xml. With retries, each pick, place and
+// insert is written inside a Recover node with the recovery for its kind.
 #include "cell_executor/task.hpp"
 
 #include <algorithm>
@@ -32,9 +33,9 @@ const std::map<std::string, Schema> & schemas()
 {
   static const std::map<std::string, Schema> kSchemas = {
     {"detect", {{}, {"class", "color", "frames"}, ""}},
-    {"pick", {{"object"}, {"grasp"}, "object"}},
-    {"place", {{"target"}, {"compliance"}, "target"}},
-    {"insert", {{"target"}, {"max_force", "max_attempts"}, "target"}},
+    {"pick", {{"object"}, {"grasp", "retries"}, "object"}},
+    {"place", {{"target"}, {"compliance", "retries"}, "target"}},
+    {"insert", {{"target"}, {"max_force", "max_attempts", "retries"}, "target"}},
     {"move_to", {{"pose"}, {}, "pose"}},
     {"dispense", {{}, {}, ""}},
     {"wait", {{"seconds"}, {}, "seconds"}},
@@ -314,6 +315,11 @@ Step parseStep(const YAML::Node & node, bool in_loop, const std::string & where)
   {
     fail(step.line, what + ".max_attempts: expected an integer 1..255");
   }
+  if (const auto * r = get("retries");
+    r && (!isInteger(*r) || std::stoi(*r) < 0 || std::stoi(*r) > 10))
+  {
+    fail(step.line, what + ".retries: expected an integer 0..10");
+  }
   if (const auto * m = get("max")) {
     if (!isInteger(*m) || (step.kind == "repeat_until" && std::stoi(*m) < 1)) {
       fail(step.line, what + ".max: expected " +
@@ -415,6 +421,30 @@ std::string skillXml(const Step & step)
 void stepXml(const Step & step, const std::string & policy, std::ostringstream & out,
   const std::string & indent);
 
+// The recovery that runs between two tries of a skill. A pick looks again, which also brings the
+// arm back to the observe pose, so a plan that failed from an awkward place starts afresh, and
+// a moved or dropped object is found where it now lies. A place or insert that still holds its
+// object goes home and tries again; one whose object fell out looks and picks it up again.
+std::string recoveryXml(const Step & step, const std::string & indent)
+{
+  const std::string look = "<DetectObjects class=\"\" color=\"\" frames=\"1\"/>";
+  if (step.kind == "pick") {
+    return indent + look + "\n";
+  }
+  std::ostringstream out;
+  out << indent << "<Fallback name=\"recover_" << step.kind << "\">\n";
+  out << indent << "  <Sequence name=\"still_holding\">\n";
+  out << indent << "    <IsHolding/>\n";
+  out << indent << "    <MoveToNamedPose pose=\"home\"/>\n";
+  out << indent << "  </Sequence>\n";
+  out << indent << "  <Sequence name=\"pick_again\">\n";
+  out << indent << "    " << look << "\n";
+  out << indent << "    <Pick object=\"{recover_object}\" grasp=\"\"/>\n";
+  out << indent << "  </Sequence>\n";
+  out << indent << "</Fallback>\n";
+  return out.str();
+}
+
 void sequenceXml(const std::vector<Step> & steps, const std::string & name,
   const std::string & policy, std::ostringstream & out, const std::string & indent)
 {
@@ -460,8 +490,28 @@ void stepXml(const Step & step, const std::string & policy, std::ostringstream &
         << attr("on_max", argOr(step, "on_max", "fail")) << ">\n";
     sequenceXml(step.body, "round", policy, out, indent + "  ");
     out << indent << "</RepeatUntilObject>\n";
+  } else if (const auto r = step.args.find("retries");
+    r != step.args.end() && std::stoi(r->second) > 0)
+  {
+    out << indent << "<Recover" << attr("attempts", std::to_string(std::stoi(r->second) + 1))
+        << attr("what", step.kind) << ">\n";
+    out << indent << "  " << skillXml(step) << "\n";
+    out << recoveryXml(step, indent + "  ");
+    out << indent << "</Recover>\n";
   } else {
     out << indent << skillXml(step) << "\n";
+  }
+}
+
+// the task's retries written into every pick, place and insert that does not set its own
+void applyRetries(std::vector<Step> & steps, int retries)
+{
+  for (auto & s : steps) {
+    if ((s.kind == "pick" || s.kind == "place" || s.kind == "insert") && !s.args.count("retries")) {
+      s.args["retries"] = std::to_string(retries);
+    }
+    applyRetries(s.body, retries);
+    applyRetries(s.else_body, retries);
   }
 }
 
@@ -608,9 +658,11 @@ Task parseTask(const std::string & yaml)
   Task task;
   for (const auto & kv : root) {
     const std::string key = kv.first.as<std::string>();
-    if (key != "name" && key != "description" && key != "on_failure" && key != "steps") {
+    if (key != "name" && key != "description" && key != "on_failure" && key != "retries" &&
+      key != "steps")
+    {
       fail(lineOf(kv.first),
-        "unknown key '" + key + "' (accepts: name, description, on_failure, steps)");
+        "unknown key '" + key + "' (accepts: name, description, on_failure, retries, steps)");
     }
   }
   if (!root["name"]) {
@@ -630,10 +682,20 @@ Task parseTask(const std::string & yaml)
       fail(lineOf(root["on_failure"]), std::string("on_failure: ") + e.what());
     }
   }
+  if (root["retries"]) {
+    const std::string r = scalar(root["retries"], "retries");
+    if (!isInteger(r) || std::stoi(r) < 0 || std::stoi(r) > 10) {
+      fail(lineOf(root["retries"]), "retries: expected an integer 0..10");
+    }
+    task.retries = std::stoi(r);
+  }
   if (!root["steps"]) {
     throw TaskError("missing required key 'steps'");
   }
   task.steps = parseSteps(root["steps"], false, "steps");
+  if (task.retries > 0) {
+    applyRetries(task.steps, task.retries);
+  }
   return task;
 }
 
@@ -699,7 +761,9 @@ std::vector<std::string> variablesIn(const std::string & text)
     if (!(std::isalpha(static_cast<unsigned char>(text[j])) || text[j] == '_')) {
       continue;
     }
-    while (j < text.size() && (std::isalnum(static_cast<unsigned char>(text[j])) || text[j] == '_')) {
+    while (j < text.size() &&
+      (std::isalnum(static_cast<unsigned char>(text[j])) || text[j] == '_'))
+    {
       ++j;
     }
     names.push_back(text.substr(i + 1, j - i - 1));
@@ -721,7 +785,9 @@ std::string expandVariables(
       continue;
     }
     std::size_t j = i + 1;
-    while (j < text.size() && (std::isalnum(static_cast<unsigned char>(text[j])) || text[j] == '_')) {
+    while (j < text.size() &&
+      (std::isalnum(static_cast<unsigned char>(text[j])) || text[j] == '_'))
+    {
       ++j;
     }
     const std::string name = text.substr(i + 1, j - i - 1);

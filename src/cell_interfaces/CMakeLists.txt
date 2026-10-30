@@ -17,6 +17,7 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "srv/DetectObjects.srv"
   "srv/LabReset.srv"
   "srv/ResolveTarget.srv"
+  "srv/StartRun.srv"
   "action/DetectObjects.action"
   "action/ExecuteTask.action"
   "action/Insert.action"

@@ -1,11 +1,11 @@
-# This is the layout of the lab scene, the second table the cell can run (scene:=lab), in the
-# same format as config/workspace.yaml and read by the same code: cell_workspace for TF and the
-# skills' targets, build_workspace_mjcf.py for the MuJoCo geometry, and the executor for target
-# checks and drop spots. Samples start in rack_in, finished ones go to rack_done, failed ones to
-# waste, and the dispenser is a single-slot rack a vial sits in while it is dosed. Culture dishes
-# start on the table and are harvested into plate_rack; unreadable test tubes go to retest. Everything is
-# kept within the arm's comfortable reach (0.25 to 0.70 m from the base) and inside the overhead
-# camera's view. Regenerate the MJCF with python3 scripts/build_workspace_mjcf.py --config
+# This is the layout of the lab scene, the second table the cell can run (scene:=lab), in the same
+# format as config/workspace.yaml and read by the same code: cell_workspace for TF and the skills'
+# targets, build_workspace_mjcf.py for the MuJoCo geometry, and the executor for target checks and
+# drop spots. Samples start in rack_in, finished ones go to rack_done, failed ones to waste, and the
+# dispenser is a single-slot rack a vial sits in while it is dosed. Culture dishes start on the
+# table and are harvested into plate_rack; unreadable test tubes go to retest. Everything is kept
+# within the arm's comfortable reach (0.25 to 0.70 m from the base) and inside the overhead camera's
+# view. Regenerate the MJCF with python3 scripts/build_workspace_mjcf.py --config
 # config/lab/workspace.yaml --out mjcf/lab_workspace.xml after editing.
 frame: table
 

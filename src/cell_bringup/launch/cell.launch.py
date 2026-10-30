@@ -1,10 +1,11 @@
 """
-This brings up the whole cell: the simulation from sim.launch.py, MoveIt's move_group, the
-skill server, the perception node and the task executor. It is what the benchmarks and the task
-files run against. Run it with ros2 launch cell_bringup cell.launch.py, add headless:=true
-rviz:=false to run without the MuJoCo viewer and RViz, or add task:=sort_and_insert to have the
-executor run that task as soon as it starts. scene:=lab runs the lab table instead: every node
-then reads the lab's layout and object types, and cell_lab starts to run the samples' chemistry.
+This brings up the whole cell: the simulation from sim.launch.py, MoveIt's move_group, the skill
+server, the perception node, the task executor and, on the default table, the fault injector from
+cell_monitor. It is what the benchmarks and the task files run against. Run it with ros2 launch
+cell_bringup cell.launch.py, add headless:=true rviz:=false to run without the MuJoCo viewer and
+RViz, or add task:=sort_and_insert to have the executor run that task as soon as it starts.
+scene:=lab runs the lab table instead: every node then reads the lab's layout and object types, and
+cell_lab starts to run the samples' chemistry.
 """
 import os
 
@@ -114,6 +115,11 @@ def launch_setup(context):
     )
 
     nodes = [sim, move_group, skills, perception, executor]
+    if not files["lab"]:
+        # the fault injector, idle until a reliability benchmark starts a run; its layout rules
+        # are the default table's, so the lab scene goes without it
+        nodes.append(Node(package="cell_monitor", executable="monitor_node", output="screen",
+                          parameters=[sim_time]))
     if files["lab"]:
         # the lab's chemistry, which sets the samples out and changes them as they react
         nodes.append(Node(

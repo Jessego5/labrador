@@ -1,14 +1,17 @@
 // These are the tests for the task logic. They run generated trees with the real control nodes
-// (Step, ForEachObject, IsHolding and the SafeStop subtree from trees/) and stub skills that
-// record their calls, so the order of calls, the bin drop spots and each failure policy can be
-// checked without ROS or a robot. The workspace below has the same trays, bins and fixture as
-// cell_description/config/workspace.yaml, including the two drop spots per bin that exist
-// because two cubes placed at a bin centre landed on each other. Run them with
-// colcon test --packages-select cell_executor.
+// (Step, ForEachObject, WatchObjects, RepeatUntilObject, ObjectIs, IsHolding, Recover and the
+// SafeStop subtree from trees/) and stub skills that record their calls and can be told to fail,
+// with an error code and, for a place, by dropping the object, so the order of calls, the bin drop
+// spots, each failure policy and each recovery can be checked without ROS or a robot. The World
+// tests check how detections keep their ids through colour changes, moves and losses. The workspace
+// below has the same trays, bins and fixture as cell_description/config/workspace.yaml, including
+// the two drop spots per bin that exist because two cubes placed at a bin centre landed on each
+// other. Run them with colcon test --packages-select cell_executor.
 #include <algorithm>
+#include <map>
 #include <set>
-#include <utility>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include <gtest/gtest.h>
@@ -112,10 +115,20 @@ protected:
       };
     const auto outcome = [this](const std::string & call) {
         calls_.push_back(call);
-        if (fail_once_.erase(call)) {
-          return BT::NodeStatus::FAILURE;
+        const auto nth = fail_at_.find(call);
+        const bool failed = fail_once_.count(call) || fail_.count(call) ||
+          (nth != fail_at_.end() && std::count(calls_.begin(), calls_.end(), call) == nth->second);
+        if (fail_once_.count(call)) {
+          fail_once_.erase(fail_once_.find(call));
         }
-        return fail_.count(call) ? BT::NodeStatus::FAILURE : BT::NodeStatus::SUCCESS;
+        if (!failed) {
+          return BT::NodeStatus::SUCCESS;
+        }
+        // what the real skill nodes leave behind for a Recover node to decide on
+        const auto code = fail_code_.find(call);
+        ctx_->last_error_code = code == fail_code_.end() ? "GRASP_FAILED" : code->second;
+        ctx_->last_error = call + ": " + ctx_->last_error_code;
+        return BT::NodeStatus::FAILURE;
       };
 
     factory.registerSimpleAction("DetectObjects", [this, outcome](BT::TreeNode &) {
@@ -140,16 +153,28 @@ protected:
           calls_.push_back("Pick ?" + expand(node, "object"));
           return BT::NodeStatus::FAILURE;
         }
+        if (ctx_->world.lost(found->id)) {
+          calls_.push_back("Pick lost " + found->id);
+          ctx_->last_error_code.clear();
+          return BT::NodeStatus::FAILURE;
+        }
         const auto status = outcome("Pick " + found->id);
         if (status == BT::NodeStatus::SUCCESS) {
           ctx_->world.held = found->id;
           ctx_->world.unmarkHandled(found->id);
+        } else if (ctx_->last_error_code == "GRASP_FAILED") {
+          ctx_->world.markLost(found->id);
         }
         return status;
       }, {BT::InputPort<std::string>("object"), BT::InputPort<std::string>("grasp")});
     factory.registerSimpleAction("Place", [this, expand, outcome](BT::TreeNode & node) {
         const std::string target = ctx_->allocateTarget(expand(node, "target"));
         const auto status = outcome("Place " + target);
+        if (status == BT::NodeStatus::FAILURE && drops_.count("Place " + target)) {
+          // it fell out on the way, as PlaceNode records a GRASP_FAILED
+          ctx_->world.markLost(*ctx_->world.held);
+          ctx_->world.held.reset();
+        }
         if (status == BT::NodeStatus::SUCCESS) {
           ctx_->world.moveTo(*ctx_->world.held, ctx_->workspace->placePose(target).translation() +
             Eigen::Vector3d(0, 0, 0.025));
@@ -204,6 +229,9 @@ steps:
   std::vector<std::string> calls_;
   std::set<std::string> fail_;  // calls that fail
   std::multiset<std::string> fail_once_;  // calls that fail once each time they are listed
+  std::map<std::string, std::string> fail_code_;  // their error names (default GRASP_FAILED)
+  std::set<std::string> drops_;  // Place calls whose failure is the object falling out
+  std::map<std::string, int> fail_at_;  // a call that fails the n-th time (1-based) it is made
   std::vector<std::vector<DetectedObject>> frames_;  // the scripted camera, when set
   std::size_t looks_ = 0;
 };
@@ -550,4 +578,127 @@ TEST_F(TreeTest, TraySlotsAreAllocatedInRowOrder)
   EXPECT_EQ(ctx_->allocateTarget("tray_1/C"), "tray_1/C1");
   EXPECT_EQ(ctx_->allocateTarget("tray_1/C"), "tray_1/C2");
   EXPECT_EQ(ctx_->allocateTarget("tray_1/C4"), "tray_1/C4");
+}
+
+TEST_F(TreeTest, RetriesAPickAfterLookingAgain)
+{
+  fail_once_ = {"Pick red_cube_0"};
+  const std::string yaml = "name: t\nretries: 2\nsteps:\n  - detect\n  - pick: red_cube_0\n"
+    "  - place: bin_a\n";
+  EXPECT_EQ(run(yaml, FailurePolicy::Abort), BT::NodeStatus::SUCCESS);
+  EXPECT_EQ(calls_, (std::vector<std::string>{
+    "DetectObjects", "Pick red_cube_0", "DetectObjects", "Pick red_cube_0", "Place bin_a/1"}));
+  EXPECT_EQ(ctx_->recoveries, 1);
+  EXPECT_EQ(ctx_->recovered, 1);
+}
+
+TEST_F(TreeTest, GivesUpWhenTheRetriesRunOut)
+{
+  fail_ = {"Pick red_cube_0"};
+  const std::string yaml = "name: t\nretries: 2\nsteps:\n  - detect\n  - pick: red_cube_0\n";
+  EXPECT_EQ(run(yaml, FailurePolicy::Abort), BT::NodeStatus::FAILURE);
+  EXPECT_EQ(calls_, (std::vector<std::string>{
+    "DetectObjects", "Pick red_cube_0", "DetectObjects", "Pick red_cube_0", "DetectObjects",
+    "Pick red_cube_0"}));
+  EXPECT_EQ(ctx_->recoveries, 1);
+  EXPECT_EQ(ctx_->recovered, 0);
+}
+
+TEST_F(TreeTest, DoesNotRetryWhatAnotherTryCannotChange)
+{
+  // an abort cancels the skill, and an invalid goal stays invalid
+  for (const std::string code : {"CANCELED", "INVALID_GOAL"}) {
+    calls_.clear();
+    fail_ = {"Pick red_cube_0"};
+    fail_code_ = {{"Pick red_cube_0", code}};
+    const std::string yaml = "name: t\nretries: 2\nsteps:\n  - detect\n  - pick: red_cube_0\n";
+    EXPECT_EQ(run(yaml, FailurePolicy::Abort), BT::NodeStatus::FAILURE) << code;
+    EXPECT_EQ(calls_, (std::vector<std::string>{"DetectObjects", "Pick red_cube_0"})) << code;
+  }
+}
+
+TEST_F(TreeTest, PicksADroppedObjectUpAgainWhereItFell)
+{
+  // The cylinder falls out on the way to C1 and lands 25 cm away. The second look finds it
+  // there under its own id, because the drop marked it lost, and the place is tried again.
+  auto cylinder = [](double x, double y) {
+      DetectedObject o = object("blue_cylinder_0", "blue_cylinder", "cylinder", "blue");
+      o.pose.pose.position.x = x;
+      o.pose.pose.position.y = y;
+      return o;
+    };
+  frames_ = {{cylinder(0.40, -0.30)}, {cylinder(0.55, -0.10)}};
+  fail_once_ = {"Place tray_1/C1"};
+  drops_ = {"Place tray_1/C1"};
+  const std::string yaml = "name: t\nretries: 2\nsteps:\n  - detect\n  - pick: blue_cylinder_0\n"
+    "  - place: tray_1/C1\n";
+  EXPECT_EQ(run(yaml, FailurePolicy::Abort), BT::NodeStatus::SUCCESS);
+  EXPECT_EQ(calls_, (std::vector<std::string>{
+    "DetectObjects", "Pick blue_cylinder_0", "Place tray_1/C1", "DetectObjects",
+    "Pick blue_cylinder_0", "Place tray_1/C1"}));
+  EXPECT_EQ(ctx_->recovered, 1);
+  EXPECT_FALSE(ctx_->world.lost("blue_cylinder_0"));
+}
+
+TEST_F(TreeTest, APlaceThatStillHoldsItsObjectTriesAgainFromHome)
+{
+  fail_once_ = {"Place tray_1/C1"};
+  fail_code_ = {{"Place tray_1/C1", "PLAN_FAILED"}};
+  const std::string yaml = "name: t\nretries: 1\nsteps:\n  - detect\n  - pick: blue_cylinder_0\n"
+    "  - place: tray_1/C1\n";
+  EXPECT_EQ(run(yaml, FailurePolicy::Abort), BT::NodeStatus::SUCCESS);
+  EXPECT_EQ(calls_, (std::vector<std::string>{
+    "DetectObjects", "Pick blue_cylinder_0", "Place tray_1/C1", "MoveToNamedPose home",
+    "Place tray_1/C1"}));
+}
+
+TEST(World, FindsAnObjectThatMovedOrWasLost)
+{
+  World w;
+  auto cube = [](const std::string & color, double x) {
+      DetectedObject o = object(color + "_cube_0", color + "_cube", "cube", color);
+      o.pose.pose.position.x = x;
+      return o;
+    };
+  w.updateDetections({cube("red", 0.40)}, {});
+  // nudged 6 cm: beyond the first pass's 2 cm, within the second pass's 12 cm
+  w.updateDetections({cube("red", 0.46)}, {});
+  ASSERT_EQ(w.detections().size(), 1u);
+  EXPECT_EQ(w.detections()[0].id, "red_cube_0");
+  EXPECT_NEAR(w.detections()[0].pose.pose.position.x, 0.46, 1e-9);
+  // 30 cm away it is a different object, unless the world lost the first one
+  w.updateDetections({cube("red", 0.76)}, {});
+  ASSERT_EQ(w.detections().size(), 1u);
+  EXPECT_EQ(w.detections()[0].id, "red_cube_1");
+  w = World();
+  w.updateDetections({cube("red", 0.40)}, {});
+  w.markLost("red_cube_0");
+  w.updateDetections({cube("red", 0.76), cube("green", 0.41)}, {});
+  EXPECT_EQ(w.find("red_cube_0")->pose.pose.position.x, 0.76);
+  EXPECT_FALSE(w.lost("red_cube_0"));
+  // the second pass needs the same colour: the green cube did not take the red one's id
+  EXPECT_EQ(w.find("green_cube_0")->color, "green");
+}
+
+TEST_F(TreeTest, ARecoveryThatMissesRunsAgainWhileTriesAreLeft)
+{
+  // the cylinder drops on the way to C1, the recovery's pick misses it, the second recovery
+  // finds it and the place goes through on the third try
+  auto cylinder = [](double x, double y) {
+      DetectedObject o = object("blue_cylinder_0", "blue_cylinder", "cylinder", "blue");
+      o.pose.pose.position.x = x;
+      o.pose.pose.position.y = y;
+      return o;
+    };
+  frames_ = {{cylinder(0.40, -0.30)}, {cylinder(0.55, -0.10)}, {cylinder(0.60, -0.05)}};
+  fail_once_ = {"Place tray_1/C1"};
+  drops_ = {"Place tray_1/C1"};
+  fail_at_ = {{"Pick blue_cylinder_0", 2}};
+  const std::string yaml = "name: t\nretries: 2\nsteps:\n  - detect\n  - pick: blue_cylinder_0\n"
+    "  - place: tray_1/C1\n";
+  EXPECT_EQ(run(yaml, FailurePolicy::Abort), BT::NodeStatus::SUCCESS);
+  EXPECT_EQ(calls_, (std::vector<std::string>{
+    "DetectObjects", "Pick blue_cylinder_0", "Place tray_1/C1", "DetectObjects",
+    "Pick blue_cylinder_0", "DetectObjects", "Pick blue_cylinder_0", "Place tray_1/C1"}));
+  EXPECT_EQ(ctx_->recovered, 1);
 }

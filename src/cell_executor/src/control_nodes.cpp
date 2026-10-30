@@ -1,10 +1,13 @@
 // This is the implementation of the task-structure nodes declared in control_nodes.hpp. Step,
-// ForEachObject and WatchObjects write a log record for each finished step and each skipped
-// object, and keep /executor/state's step and item up to date through the RunContext.
+// ForEachObject and WatchObjects write a log record for each finished step and each skipped object,
+// and keep /executor/state's step and item up to date through the RunContext. Recover logs each
+// recovery it starts and whether the skill then succeeded, which is what the reliability benchmark
+// scores the injected faults against.
 #include "cell_executor/control_nodes.hpp"
 
 #include <algorithm>
 #include <cmath>
+#include <set>
 
 namespace cell_executor
 {
@@ -206,6 +209,115 @@ void ForEachObjectNode::halt()
   current_ = 0;
   item_started_ = false;
   BT::DecoratorNode::halt();
+}
+
+// Recover
+
+RecoverNode::RecoverNode(
+  const std::string & name, const BT::NodeConfig & config, std::shared_ptr<RunContext> ctx)
+: BT::ControlNode(name, config), ctx_(std::move(ctx))
+{
+}
+
+BT::PortsList RecoverNode::providedPorts()
+{
+  return {
+    BT::InputPort<int>("attempts", 3, "tries of the skill in all, recoveries in between"),
+    BT::InputPort<std::string>("what", "", "the step kind, for the log"),
+  };
+}
+
+bool RecoverNode::retryable(const std::string & error)
+{
+  static const std::set<std::string> kRetryable = {
+    "PLAN_FAILED", "EXECUTION_FAILED", "GRASP_FAILED", "RELEASE_FAILED", "INSERT_JAMMED",
+    "TIMEOUT", "NOT_HOLDING", "PERCEPTION_FAILED"};
+  return kRetryable.count(error) > 0;
+}
+
+BT::NodeStatus RecoverNode::tick()
+{
+  if (children_nodes_.size() != 2) {
+    throw BT::RuntimeError("Recover needs two children: the skill and its recovery");
+  }
+  const int attempts = std::max(1, getInput<int>("attempts").value_or(3));
+  const std::string what = getInput<std::string>("what").value_or("");
+  if (status() == BT::NodeStatus::IDLE) {
+    attempt_ = 1;
+    recovering_ = false;
+    config().blackboard->set("recover_object", ctx_->world.held.value_or(""));
+  }
+  setStatus(BT::NodeStatus::RUNNING);
+
+  if (recovering_) {
+    const BT::NodeStatus r = children_nodes_[1]->executeTick();
+    if (r == BT::NodeStatus::RUNNING) {
+      return BT::NodeStatus::RUNNING;
+    }
+    resetChildren();
+    if (r == BT::NodeStatus::FAILURE && attempt_ + 1 < attempts &&
+      retryable(ctx_->last_error_code))
+    {
+      // The recovery's own pick missed (a drop picked up again can be knocked aside too). That
+      // uses up a try, and the recovery runs again; giving up here lost a run with tries left.
+      ++attempt_;
+      ctx_->warn(what + ": recovery failed (" + ctx_->last_error + "); recovering again (try " +
+        std::to_string(attempt_ + 1) + " of " + std::to_string(attempts) + " next)");
+      ctx_->log({{"event", "recovery"}, {"what", what}, {"attempt", attempt_},
+          {"error", ctx_->last_error_code}, {"message", ctx_->last_error}});
+      ctx_->last_error_code.clear();
+      return BT::NodeStatus::RUNNING;
+    }
+    recovering_ = false;
+    if (r == BT::NodeStatus::FAILURE) {
+      ctx_->last_error = failure_ + "; recovery failed" +
+        (ctx_->last_error.empty() || ctx_->last_error == failure_ ? "" : ": " + ctx_->last_error);
+      ctx_->log({{"event", "recovery_failed"}, {"what", what}, {"attempt", attempt_},
+          {"error", ctx_->last_error}});
+      return BT::NodeStatus::FAILURE;
+    }
+    ++attempt_;
+    // back to the tick loop, so a pause or abort takes effect before the skill runs again
+    return BT::NodeStatus::RUNNING;
+  }
+
+  if (children_nodes_[0]->status() == BT::NodeStatus::IDLE) {
+    ctx_->last_error_code.clear();
+  }
+  const BT::NodeStatus s = children_nodes_[0]->executeTick();
+  if (s == BT::NodeStatus::RUNNING) {
+    return BT::NodeStatus::RUNNING;
+  }
+  resetChildren();
+  if (s == BT::NodeStatus::SUCCESS) {
+    if (attempt_ > 1) {
+      ++ctx_->recovered;
+      ctx_->info(what + ": recovered on try " + std::to_string(attempt_));
+      ctx_->log({{"event", "recovered"}, {"what", what}, {"attempt", attempt_}});
+    }
+    return BT::NodeStatus::SUCCESS;
+  }
+  const std::string code = ctx_->last_error_code;
+  if (attempt_ >= attempts || !retryable(code)) {
+    return BT::NodeStatus::FAILURE;
+  }
+  if (attempt_ == 1) {
+    ++ctx_->recoveries;
+  }
+  failure_ = ctx_->last_error;
+  ctx_->warn(what + ": " + failure_ + "; recovering (try " + std::to_string(attempt_ + 1) +
+    " of " + std::to_string(attempts) + " next)");
+  ctx_->log({{"event", "recovery"}, {"what", what}, {"attempt", attempt_}, {"error", code},
+      {"message", failure_}});
+  recovering_ = true;
+  return BT::NodeStatus::RUNNING;
+}
+
+void RecoverNode::halt()
+{
+  attempt_ = 1;
+  recovering_ = false;
+  BT::ControlNode::halt();
 }
 
 // IsHolding
@@ -512,6 +624,7 @@ void registerControlNodes(BT::BehaviorTreeFactory & factory, std::shared_ptr<Run
   factory.registerNodeType<RepeatUntilObjectNode>("RepeatUntilObject", ctx);
   factory.registerNodeType<ObjectIsNode>("ObjectIs", ctx);
   factory.registerNodeType<IsHoldingNode>("IsHolding", ctx);
+  factory.registerNodeType<RecoverNode>("Recover", ctx);
 }
 
 }  // namespace cell_executor

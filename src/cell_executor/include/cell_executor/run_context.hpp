@@ -31,7 +31,11 @@ using DetectedObject = cell_interfaces::msg::DetectedObject;
 // even when it looks different later. That is what lets a task wait for a vial to change colour:
 // the detector names things by what they look like now ("vial_green_0"), so the world matches
 // each new detection to the object of the same class it last saw within match_radius and keeps
-// that object's id, while updating its colour, type and pose.
+// that object's id, while updating its colour, type and pose. A second pass finds objects that
+// moved further: a known object not seen near its old place takes the nearest unmatched detection
+// of the same class and colour within relocate_radius, and a lost object (one a grasp missed or
+// that fell out of the gripper) takes it at any distance. That is how a cube nudged 4 cm after it
+// was seen, or a cylinder dropped on the way to its slot, keeps its id and gets picked again.
 class World
 {
 public:
@@ -72,10 +76,16 @@ public:
   // handled objects, and picking one back out of a station (a vial from the dispenser) puts it
   // back in play.
   void markHandled(const std::string & id) {handled_.insert(id);}
+  // the object is not where the world thought; the next detection places it again
+  void markLost(const std::string & id) {lost_.insert(id);}
+  bool lost(const std::string & id) const {return lost_.count(id) > 0;}
   void unmarkHandled(const std::string & id) {handled_.erase(id);}
   bool handled(const std::string & id) const {return handled_.count(id) > 0;}
 
-  double match_radius = 0.02;  // m; vials in a rack are 60 mm apart
+  double match_radius = 0.02;     // m; vials in a rack are 60 mm apart
+  // m; the second pass, for objects that moved. A nudge moves one up to 65 mm, and the second pass
+  // also needs the same class and colour, so the default layout's 100 mm spacing keeps it apart
+  double relocate_radius = 0.12;
 
   std::optional<std::string> held;  // id of the object in the gripper
 
@@ -85,6 +95,7 @@ private:
 
   std::vector<DetectedObject> objects_;
   std::set<std::string> handled_;
+  std::set<std::string> lost_;
 };
 
 // the live progress of a run, which is what /executor/state shows
@@ -123,6 +134,9 @@ public:
   int failed_step = 0;         // step that ended the task (0 = none)
   bool safe_stopped = false;   // the task failed under on_failure: safe_stop
   std::string last_error;      // most recent skill failure, "Pick: ..."
+  std::string last_error_code; // its error name, "GRASP_FAILED", for the recovery decision
+  int recoveries = 0;          // Recover nodes whose skill failed and that tried to recover
+  int recovered = 0;           // of those, the ones whose skill succeeded in the end
 
   // The next drop spot ("bin_a/2") for a bin that has several ("bin_a"), the next slot in row
   // order ("rack_done/A2") for a tray named on its own, or the next slot in one row for a tray
@@ -131,6 +145,9 @@ public:
   // The spots exist because two cubes placed at the bin centre landed on each other. When a bin
   // or tray is full its spots or slots are reused, with a warning.
   std::string allocateTarget(const std::string & target);
+  // gives back the last slot or spot allocated for `target`, after a Place that never got there
+  // (a retried place into bin_a would otherwise skip bin_a/2 and wrap onto the cube in bin_a/1)
+  void releaseTarget(const std::string & target);
 
   // updates the live progress, thread safe
   void updateProgress(const std::function<void(Progress &)> & update);

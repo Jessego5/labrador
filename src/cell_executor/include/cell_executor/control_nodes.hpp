@@ -1,9 +1,11 @@
 // These are the nodes that give a generated tree its task structure: Step, which reports progress
 // and applies the failure policy; ForEachObject, which loops over detected objects; WatchObjects,
 // which keeps looking and handles each object as it comes to meet a condition; RepeatUntilObject,
-// which repeats its child until an object meets a condition; and the ObjectIs and IsHolding
-// conditions. They only touch the RunContext and never call a skill themselves (WatchObjects has
-// its detection as a child), so test_tree runs them with stub skills and no robot.
+// which repeats its child until an object meets a condition; Recover, which runs a skill's recovery
+// and tries the skill again when it fails in a way another try can fix; and the ObjectIs and
+// IsHolding conditions. They only touch the RunContext and never call a skill themselves
+// (WatchObjects has its detection as a child), so test_tree runs them with stub skills and no
+// robot.
 #pragma once
 
 #include <memory>
@@ -129,6 +131,33 @@ private:
   std::shared_ptr<RunContext> ctx_;
   int rounds_ = 0;
   bool child_running_ = false;
+};
+
+// A skill with recovery, what a pick, place or insert step becomes when the task sets retries. The
+// first child is the skill and the second the recovery. When the skill fails with an error that
+// trying again can help (a missed grasp, a drop, a plan or execution failure, a jam, a timeout, no
+// camera frame), the recovery runs and then the skill again, up to `attempts` times in all. A
+// recovery that itself fails with such an error uses up a try and runs again. Errors that another
+// try cannot change, such as an abort or an unknown target, fail at once. Before the first try the
+// blackboard entry "recover_object" is set to the object in the gripper, so a place's recovery can
+// pick it up again after a drop.
+class RecoverNode : public BT::ControlNode
+{
+public:
+  RecoverNode(const std::string & name, const BT::NodeConfig & config,
+    std::shared_ptr<RunContext> ctx);
+  static BT::PortsList providedPorts();
+
+  // true for the error names a recovery is worth trying for
+  static bool retryable(const std::string & error);
+
+private:
+  BT::NodeStatus tick() override;
+  void halt() override;
+  std::shared_ptr<RunContext> ctx_;
+  int attempt_ = 1;
+  bool recovering_ = false;
+  std::string failure_;  // the skill's error that started the current recovery
 };
 
 // SUCCESS when the object `item` meets `condition` as last detected; the test of an if step

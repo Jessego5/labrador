@@ -1,0 +1,12 @@
+# This arms cell_monitor for one benchmark run: which faults it may inject and how often, from a
+# seed so the same run can be repeated, and whether to record a rosbag of it. cell_monitor serves
+# it as /monitor/start_run; /monitor/end_run (std_srvs/Trigger) ends the run and returns the faults
+# it injected as JSON in the message.
+string run_id
+string[] faults    # any of nudge, slip, drop, fixture_shift, camera_noise; empty for none
+float64 rate       # chance that each opportunity for a fault (a pick, a transport) gets one
+int32 seed
+string bag_dir     # where to record the run's rosbag; empty for no recording
+---
+bool success
+string message

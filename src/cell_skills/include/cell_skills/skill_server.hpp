@@ -146,12 +146,21 @@ private:
     const Eigen::Isometry3d & above, const Eigen::Isometry3d & below, const std::string & what);
   void moveToNamed(const std::string & name);
   void moveLinear(const Eigen::Isometry3d & tcp_pose, const std::string & what);
+  // moveLinear down to `tcp_pose`, and back up to `above` before rethrowing if it fails on the way
+  void moveDown(
+    const Eigen::Isometry3d & tcp_pose, const Eigen::Isometry3d & above, const std::string & what);
+  // goes down to a grasp pose; if the straight line down cannot be planned from where the
+  // approach left the arm, it approaches again on the grasp pose's IK branch first
+  void descendToGrasp(const Eigen::Isometry3d & grasp, const Eigen::Isometry3d & above);
   double commandGripper(double position);
+  // throws GRASP_FAILED, and forgets the held object, when the fingers have closed on nothing
+  void checkStillHolding(const std::string & where);
   double gripperPosition() const;
   Eigen::Isometry3d toPlanningFrame(const geometry_msgs::msg::PoseStamped & pose) const;
 
   // compliance primitives, which throw SkillFailure
-  void switchControllers(const std::vector<std::string> & start, const std::vector<std::string> & stop);
+  void switchControllers(
+    const std::vector<std::string> & start, const std::vector<std::string> & stop);
   ComplianceState complianceState() const;
   // a fresh compliance state, after waiting one control tick (about 10 ms)
   template<typename GoalHandleT>

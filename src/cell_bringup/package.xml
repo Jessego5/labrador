@@ -17,6 +17,7 @@
   <exec_depend>cell_description</exec_depend>
   <exec_depend>cell_executor</exec_depend>
   <exec_depend>cell_lab</exec_depend>
+  <exec_depend>cell_monitor</exec_depend>
   <exec_depend>cell_moveit_config</exec_depend>
   <exec_depend>cell_perception</exec_depend>
   <exec_depend>cell_skills</exec_depend>
